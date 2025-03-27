@@ -1,0 +1,35 @@
+# Ignorer les dossiers node_modules
+frontend/node_modules/
+server/node_modules/
+
+# Ignorer les fichiers de build (pour React)
+frontend/dist/
+server/dist/
+frontend/build/
+server/build/
+
+# Ignorer les fichiers de dépendances Yarn ou npm
+frontend/package-lock.json
+server/package-lock.json
+
+frontend/yarn.lock
+server/yarn.lock
+
+# Ignorer les fichiers de configuration locaux
+frontend/.env
+server/.env
+frontend/.env.local
+server/.env.local
+
+# Ignorer les fichiers générés par TypeScript
+frontend/*.tsbuildinfo
+server/*.tsbuildinfo
+frontend/dist/
+server/dist/
+
+# Ignorer les fichiers temporaires
+frontend/*.log
+server/*.log
+
+frontend/*.tmp
+server/*.tmp
