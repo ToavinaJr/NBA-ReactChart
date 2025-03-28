@@ -1,0 +1,17 @@
+# Pour lancer le frontend :
+```bash
+cd frontend
+npm run dev
+```
+
+# POur lancer le serveur
+```bash
+cd server
+node dist/index.js
+```
+
+# Pour lancer la base de donnée
+```sql
+CREATE DATABASE nba_stats;
+CREATE TABLE players;
+```
