@@ -6,12 +6,11 @@ import {
 } from 'chart.js';
 import { Bar, Doughnut, Line, Pie, Radar } from 'react-chartjs-2';
 
-// Enregistrer les composants nécessaires
+// ... (imports et interfaces inchangés) ...
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, DoughnutController, ArcElement, LineElement, PointElement, RadarController, RadialLinearScale);
 
-// --- INTERFACES ---
 interface Player {
-  id?: number | string; // Ajouter un ID si possible pour la key
+  id?: number | string;
   name: string;
   team: string;
   number: number | string;
@@ -29,7 +28,7 @@ interface ChartResponseData {
 }
 
 interface ChartStateData {
-  labels: (string | number)[];
+  labels: (string | number)[]; // Sera string[] pour les salaires maintenant
   datasets: {
     label: string;
     data: number[];
@@ -39,40 +38,35 @@ interface ChartStateData {
   }[];
 }
 
-// --- COMPOSANT ---
+
 const PlayerChart: React.FC = () => {
-  // États pour le graphique
+  // ... (états inchangés) ...
   const [chartData, setChartData] = useState<ChartStateData | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<string>('Age');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-
-  // --- États pour la liste filtrée (utilisés par le modal) ---
   const [filteredPlayers, setFilteredPlayers] = useState<Player[] | null>(null);
   const [isFiltering, setIsFiltering] = useState<boolean>(false);
   const [filterError, setFilterError] = useState<string | null>(null);
   const [currentFilterInfo, setCurrentFilterInfo] = useState<{ property: string, label: string | number } | null>(null);
-
-  // --- NOUVEL état pour la visibilité du modal ---
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
-
   const chartRef = useRef<ChartJS<'bar' | 'doughnut' | 'line' | 'pie' | 'radar'>>(null);
 
-  // --- Effet pour charger les données du GRAPHIQUE ---
+
   useEffect(() => {
     const fetchChartData = async () => {
       setIsLoading(true);
       setError(null);
       setChartData(null);
-      // Réinitialiser le filtre ET fermer le modal si on change de graphique
       setFilteredPlayers(null);
       setCurrentFilterInfo(null);
       setFilterError(null);
-      setIsModalOpen(false); // Fermer le modal si ouvert
+      setIsModalOpen(false);
 
       const targetParam = selectedTarget.toLowerCase();
 
       try {
+        console.log(`Fetching chart data for: ${targetParam}`);
         const response = await fetch(`http://localhost:3001/api/players/stats/${targetParam}`);
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ error: `HTTP error ${response.status}` }));
@@ -87,21 +81,24 @@ const PlayerChart: React.FC = () => {
             return;
         }
 
+        // --- Plus besoin de formater les labels de salaire ici ---
+        // Le backend renvoie directement les labels de tranches ("< 1M", "1M - 5M", etc.)
+
         const generateColors = (numColors: number): string[] => {
-            const colors: string[] = [];
-            const baseColors = [
-                'rgba(255, 99, 132, 0.6)', 'rgba(54, 162, 235, 0.6)', 'rgba(255, 206, 86, 0.6)',
-                'rgba(75, 192, 192, 0.6)', 'rgba(153, 102, 255, 0.6)', 'rgba(255, 159, 64, 0.6)',
-                'rgba(199, 199, 199, 0.6)', 'rgba(83, 102, 255, 0.6)', 'rgba(255, 102, 183, 0.6)'
-            ];
-            for (let i = 0; i < numColors; i++) {
-                colors.push(baseColors[i % baseColors.length]); // Cycle through base colors
-            }
-             // Si vraiment plus de couleurs que la base, on pourrait ajouter de la génération aléatoire ou plus de couleurs fixes
-            if (numColors > baseColors.length) {
-                 console.warn(`Plus de ${baseColors.length} labels (${numColors}), les couleurs vont se répéter.`);
-            }
-            return colors;
+             // ... (fonction generateColors inchangée) ...
+             const colors: string[] = [];
+             const baseColors = [
+                 'rgba(255, 99, 132, 0.6)', 'rgba(54, 162, 235, 0.6)', 'rgba(255, 206, 86, 0.6)',
+                 'rgba(75, 192, 192, 0.6)', 'rgba(153, 102, 255, 0.6)', 'rgba(255, 159, 64, 0.6)',
+                 'rgba(199, 199, 199, 0.6)', 'rgba(83, 102, 255, 0.6)', 'rgba(255, 102, 183, 0.6)'
+             ];
+             for (let i = 0; i < numColors; i++) {
+                 colors.push(baseColors[i % baseColors.length]);
+             }
+              if (numColors > baseColors.length) {
+                  console.warn(`Plus de ${baseColors.length} labels (${numColors}), les couleurs vont se répéter.`);
+             }
+             return colors;
         };
 
         const numLabels = data.labels.length;
@@ -109,9 +106,9 @@ const PlayerChart: React.FC = () => {
         const borderColors = backgroundColors.map(color => color.replace('0.6', '1'));
 
         setChartData({
-          labels: data.labels,
+          labels: data.labels, // Utiliser directement les labels reçus (seront des strings pour les salaires)
           datasets: [ {
-              label: `Nombre de Joueurs par ${selectedTarget}`,
+              label: `Nombre de Joueurs par ${selectedTarget === 'Salary' ? 'Tranche de Salaire' : selectedTarget}`,
               data: data.data,
               backgroundColor: backgroundColors,
               borderColor: borderColors,
@@ -129,25 +126,31 @@ const PlayerChart: React.FC = () => {
     fetchChartData();
   }, [selectedTarget]);
 
-  // --- Fonction de CLIC sur le graphique (modifiée pour ouvrir le modal) ---
+  // --- Fonction de CLIC sur le graphique ---
   const handleChartClick = async (event: ChartEvent, elements: ActiveElement[]) => {
     if (elements.length === 0 || !chartData || !chartData.labels) return;
 
     const { index } = elements[0];
+    // Le label cliqué est maintenant soit une valeur (Age, Team...) soit un label de tranche (Salary)
     const clickedLabel = chartData.labels[index];
     const filterProperty = selectedTarget;
 
-    console.log(`Clic détecté: Propriété='${filterProperty}', Label='${clickedLabel}'`);
+    console.log(`Clic détecté: Propriété='${filterProperty}', Label/Tranche='${clickedLabel}'`);
 
-    // Préparer l'état pour le modal et ouvrir le modal avec chargement
+    // --- Logique simplifiée pour la valeur à envoyer ---
+    // Pas besoin de parser si c'est un salaire, on envoie le label de la tranche directement
+    const valueToSend = clickedLabel;
+
     setIsFiltering(true);
     setFilterError(null);
     setFilteredPlayers(null);
+    // Mémoriser le label cliqué (peut être une valeur ou une tranche) pour l'affichage du titre modal
     setCurrentFilterInfo({ property: filterProperty, label: clickedLabel });
-    setIsModalOpen(true); // <<<=== OUVRIR LE MODAL ICI
+    setIsModalOpen(true);
 
     try {
-      const encodedValue = encodeURIComponent(String(clickedLabel));
+      // Envoyer le label (valeur ou tranche) encodé à l'API
+      const encodedValue = encodeURIComponent(String(valueToSend));
       const url = `http://localhost:3001/api/players/filter?property=${filterProperty.toLowerCase()}&value=${encodedValue}`;
       console.log(`Appel API filtre: ${url}`);
       const response = await fetch(url);
@@ -158,18 +161,18 @@ const PlayerChart: React.FC = () => {
       }
       const players: Player[] = await response.json();
       console.log('Joueurs filtrés reçus:', players);
-      setFilteredPlayers(players); // Mettre à jour les données pour le modal
+      setFilteredPlayers(players);
 
     } catch (err) {
       console.error('Erreur handleChartClick fetch:', err);
       setFilterError(err instanceof Error ? err.message : 'Erreur inconnue filtre');
       setFilteredPlayers(null);
     } finally {
-      setIsFiltering(false); // Fin du chargement (le modal reste ouvert)
+      setIsFiltering(false);
     }
   };
 
-  // --- Fonction pour FERMER le modal ---
+  // --- Fonction pour FERMER le modal (inchangée) ---
   const closeModal = () => {
       setIsModalOpen(false);
        setFilteredPlayers(null);
@@ -178,60 +181,73 @@ const PlayerChart: React.FC = () => {
        setIsFiltering(false);
   };
 
-  // --- Type de graphique ---
+  // --- Type de graphique (inchangé) ---
   const getChartType = (target: string): string => {
      switch (target) {
-      case 'Age': return 'bar';
-      case 'Position': return 'doughnut';
-      case 'Team': return 'bar';
-      case 'College': return 'bar';
-      case 'Height': return 'bar';
-      case 'Number': return 'bar';
-      case 'Weight': return 'bar';
+      // ... autres cas ...
+      case 'Salary': return 'bar';
       default: return 'bar';
     }
   };
   const chartType = getChartType(selectedTarget);
 
-  // --- Options du graphique (incluant onClick) ---
+  // --- Options du graphique ---
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
-    onClick: handleChartClick, // Lié à la fonction qui ouvre le modal
-    scales: (chartType === 'bar' || chartType === 'line') ? { /* ... options scales ... */ } : undefined,
-     ...(chartType === 'radar' && { /* ... options radar ... */ })
-  };
-
-  // --- Fonction pour rendre le GRAPHIQUE ---
-  const renderChart = () => {
-     if (!chartData || !chartData.datasets || chartData.datasets.length === 0) {
-        if (!isLoading) return <p>Aucune donnée disponible pour afficher le graphique "{selectedTarget}".</p>;
-        return null;
-    }
-    // ... (le reste de la fonction renderChart reste pareil, utilisant chartRef)
-     const typedChartOptions: any = chartOptions;
-     switch (chartType) {
-       case 'bar': return <Bar ref={chartRef as React.MutableRefObject<ChartJS<'bar'> | null>} data={chartData} options={typedChartOptions} />;
-       case 'doughnut': return <Doughnut ref={chartRef as React.MutableRefObject<ChartJS<'doughnut'> | null>} data={chartData} options={typedChartOptions} />;
-       case 'line': return <Line ref={chartRef as React.MutableRefObject<ChartJS<'line'> | null>} data={chartData} options={typedChartOptions} />;
-       case 'pie': return <Pie ref={chartRef as React.MutableRefObject<ChartJS<'pie'> | null>} data={chartData} options={typedChartOptions} />;
-       case 'radar': return <Radar ref={chartRef as React.MutableRefObject<ChartJS<'radar'> | null>} data={chartData} options={typedChartOptions} />;
-       default: return <Bar ref={chartRef as React.MutableRefObject<ChartJS<'bar'> | null>} data={chartData} options={typedChartOptions} />;
+    onClick: handleChartClick,
+    scales: (chartType === 'bar' || chartType === 'line') ? {
+       y: { beginAtZero: true, title: { display: true, text: 'Nombre de Joueurs' } },
+       // Pour les salaires, l'axe X affiche maintenant les tranches
+       x: { title: { display: true, text: selectedTarget === 'Salary' ? 'Tranche de Salaire' : selectedTarget } }
+     } : undefined,
+     plugins: {
+         tooltip: {
+             callbacks: {
+                 // Le callback par défaut devrait bien fonctionner avec les labels de tranche
+                 label: function(context: any) {
+                     let label = context.dataset.label || '';
+                     if (label) { label += ': '; }
+                     if (context.parsed.y !== null) { label += context.parsed.y; }
+                     // Le context.label est maintenant la tranche de salaire ("< 1M", etc.)
+                     // Ou la valeur pour les autres graphiques
+                     return label;
+                 }
+             }
+         }
      }
   };
 
-  // --- Rendu JSX Principal ---
+  // --- Fonction pour rendre le GRAPHIQUE (inchangée) ---
+   const renderChart = () => {
+     // ... (logique renderChart inchangée) ...
+      if (!chartData || !chartData.datasets || chartData.datasets.length === 0) {
+         if (!isLoading) return <p>Aucune donnée disponible pour afficher le graphique "{selectedTarget}".</p>;
+         return null;
+     }
+      const typedChartOptions: any = chartOptions;
+      switch (chartType) {
+        case 'bar': return <Bar ref={chartRef as React.MutableRefObject<ChartJS<'bar'> | null>} data={chartData} options={typedChartOptions} />;
+        case 'doughnut': return <Doughnut ref={chartRef as React.MutableRefObject<ChartJS<'doughnut'> | null>} data={chartData} options={typedChartOptions} />;
+        case 'line': return <Line ref={chartRef as React.MutableRefObject<ChartJS<'line'> | null>} data={chartData} options={typedChartOptions} />;
+        case 'pie': return <Pie ref={chartRef as React.MutableRefObject<ChartJS<'pie'> | null>} data={chartData} options={typedChartOptions} />;
+        case 'radar': return <Radar ref={chartRef as React.MutableRefObject<ChartJS<'radar'> | null>} data={chartData} options={typedChartOptions} />;
+        default: return <Bar ref={chartRef as React.MutableRefObject<ChartJS<'bar'> | null>} data={chartData} options={typedChartOptions} />;
+      }
+   };
+
+  // --- Rendu JSX Principal (inchangé sauf peut-être le bouton Salary) ---
   return (
     <div style={{ display: 'flex', height: '100vh', fontFamily: 'sans-serif' }}>
-      {/* Menu Gauche (inchangé) */}
+      {/* Menu Gauche */}
       <div style={{ width: '220px', backgroundColor: '#f8f9fa', padding: '20px', overflowY: 'auto', borderRight: '1px solid #dee2e6' }}>
-         {/* ... contenu du menu ... */}
          <h3>Filtres Graphique</h3>
-        {['Age', 'Position', 'Team', 'College', 'Height', 'Number', 'Weight'].map((target) => (
-          <button
+        {['Age', 'Position', 'Team', 'College', 'Height', 'Number', 'Weight', 'Salary'].map((target) => (
+           // ... (boutons inchangés) ...
+           <button
             key={target}
             onClick={() => setSelectedTarget(target)}
-            disabled={isLoading} // Désactiver seulement pendant le chargement du graphique initial
+            disabled={isLoading}
             style={{
               display: 'block', width: '100%', margin: '8px 0', padding: '12px 15px', fontSize: '14px',
               backgroundColor: selectedTarget === target ? '#007bff' : (isLoading ? '#e9ecef' : 'white'),
@@ -241,15 +257,15 @@ const PlayerChart: React.FC = () => {
               transition: 'background-color 0.2s, border-color 0.2s',
             }}
           >
-            {target}
+            {target} {/* Le texte du bouton reste "Salary" */}
           </button>
         ))}
       </div>
 
-      {/* Zone Droite (Graphique seul maintenant) */}
+      {/* Zone Droite (Graphique) */}
       <div style={{ flex: 1, padding: '25px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Section Graphique */}
-        <div style={{ flexGrow: 1, position: 'relative', minHeight: '300px' }}> {/* Prend l'espace vertical */}
+        {/* ... (rendu graphique inchangé) ... */}
+        <div style={{ flexGrow: 1, position: 'relative', minHeight: '300px' }}>
           {isLoading && <div style={{ textAlign: 'center', padding: '50px' }}>Chargement du graphique...</div>}
           {error && <div style={{ color: 'red', textAlign: 'center', padding: '50px' }}>Erreur chargement graphique: {error}</div>}
           {!isLoading && !error && (
@@ -257,67 +273,37 @@ const PlayerChart: React.FC = () => {
               {renderChart()}
             </div>
           )}
-           {/* On ne met plus la liste filtrée ici */}
         </div>
       </div>
 
-       {/* --- MODAL --- */}
+       {/* --- MODAL (inchangé dans sa structure, le titre affichera la tranche) --- */}
        {isModalOpen && (
          <>
-           {/* Overlay (fond semi-transparent) */}
-           <div
-             onClick={closeModal} // Fermer en cliquant sur l'overlay
-             style={{
-               position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-               backgroundColor: 'rgba(0, 0, 0, 0.6)', // Noir semi-transparent
-               zIndex: 999, // Au-dessus de tout sauf le modal
-             }}
-           />
-
+           {/* Overlay */}
+           <div onClick={closeModal} style={{ /* ... styles overlay ... */ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.6)', zIndex: 999, }} />
            {/* Contenu du Modal */}
-           <div style={{
-               position: 'fixed', top: '50%', left: '50%',
-               transform: 'translate(-50%, -50%)', // Centrer
-               width: '80%', maxWidth: '700px', // Largeur max
-               maxHeight: '85vh', // Hauteur max
-               backgroundColor: 'white',
-               padding: '25px',
-               borderRadius: '8px',
-               boxShadow: '0 5px 15px rgba(0,0,0,0.2)',
-               zIndex: 1000, // Au-dessus de l'overlay
-               display: 'flex', flexDirection: 'column', // Pour placer le bouton close et gérer le scroll interne
-           }}>
-             {/* Bouton Fermer (en haut à droite) */}
-             <button
-               onClick={closeModal}
-               style={{
-                 position: 'absolute', top: '10px', right: '15px',
-                 background: 'none', border: 'none', fontSize: '1.5rem',
-                 cursor: 'pointer', color: '#666', lineHeight: 1, padding: 0
-               }}
-               aria-label="Fermer" // Pour l'accessibilité
-             >
-               × {/* Symbole croix */}
-             </button>
-
+           <div style={{ /* ... styles modal ... */ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '80%', maxWidth: '700px', maxHeight: '85vh', backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 5px 15px rgba(0,0,0,0.2)', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
+              {/* Bouton Fermer */}
+             <button onClick={closeModal} style={{ /* ... styles bouton fermer ... */ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#666', lineHeight: 1, padding: 0 }} aria-label="Fermer"> × </button>
              {/* Titre du Modal */}
               {currentFilterInfo && (
                  <h3 style={{ marginTop: 0, marginBottom: '15px', borderBottom: '1px solid #eee', paddingBottom: '10px'}}>
-                   Joueurs pour {currentFilterInfo.property} : "{String(currentFilterInfo.label)}"
+                   {/* Le titre affiche maintenant la tranche de salaire si c'est le cas */}
+                   Joueurs pour {currentFilterInfo.property === 'Salary' ? 'Tranche de Salaire' : currentFilterInfo.property} : "{String(currentFilterInfo.label)}"
                  </h3>
               )}
-
-             {/* Contenu variable (Chargement / Erreur / Liste) */}
-             <div style={{ overflowY: 'auto', flexGrow: 1 }}> {/* Zone scrollable */}
+             {/* Contenu variable */}
+             <div style={{ overflowY: 'auto', flexGrow: 1 }}>
                 {isFiltering && <p style={{ fontStyle: 'italic', textAlign: 'center' }}>Chargement des joueurs...</p>}
                 {filterError && <p style={{ color: 'red', textAlign: 'center' }}>Erreur: {filterError}</p>}
                 {!isFiltering && !filterError && filteredPlayers && filteredPlayers.length === 0 && currentFilterInfo && (
-                    <p style={{ textAlign: 'center' }}>Aucun joueur trouvé pour {currentFilterInfo.property} = "{String(currentFilterInfo.label)}".</p>
+                    <p style={{ textAlign: 'center' }}>Aucun joueur trouvé pour {currentFilterInfo.property === 'Salary' ? 'la tranche' : ''} "{String(currentFilterInfo.label)}".</p>
                 )}
                 {!isFiltering && !filterError && filteredPlayers && filteredPlayers.length > 0 && (
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
                     {filteredPlayers.map((player, index) => (
-                      <li key={player.id || `${player.name}-${index}`} /* Utiliser un ID si disponible */
+                       // ... (rendu de la liste li inchangé, le salaire individuel est toujours formaté) ...
+                       <li key={player.id || `${player.name}-${index}`}
                           style={{ padding: '10px 5px', borderBottom: '1px solid #f0f0f0', display: 'flex', flexWrap: 'wrap', gap: '8px 15px', fontSize: '0.9em' }}>
                         <strong style={{ minWidth: '120px' }}>{player.name}</strong>
                         <span>(#{player.number})</span>
@@ -327,17 +313,17 @@ const PlayerChart: React.FC = () => {
                         <span>Taille: {player.height}</span>
                         <span>Poids: {player.weight}kg</span>
                         {player.college && <span>Collège: {player.college}</span>}
-                        {/* Ajouter d'autres infos si pertinent */}
+                        {player.salary !== null && player.salary !== undefined && (
+                           <span>Salaire: {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(player.salary)}</span>
+                        )}
                       </li>
                     ))}
                   </ul>
                 )}
-             </div> {/* Fin de la zone scrollable */}
-           </div> {/* Fin du contenu du modal */}
+             </div>
+           </div>
          </>
        )}
-       {/* --- Fin MODAL --- */}
-
     </div>
   );
 };
