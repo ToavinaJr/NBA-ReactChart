@@ -1,239 +1,238 @@
-import express, { Request, Response } from 'express'; // Ajout des types Request, Response
-import db from './db'; // Assurez-vous que ce chemin est correct pour votre connexion DB
+import express, { Request, Response } from 'express';
+import db from './db'; // Assurez-vous que ce chemin est correct
 import cors from 'cors';
 
 const app = express();
 
 // --- Middleware ---
-app.use(cors()); // Activer CORS pour toutes les routes
-app.use(express.json()); // Pour parser les corps de requête JSON
+app.use(cors());
+app.use(express.json());
 
 // --- Constantes ---
-
-// Clé: Label affiché dans le frontend/graphique, Valeur: [min, max] (null pour pas de limite)
-// Important: L'ordre des clés ici peut être utilisé pour trier les résultats si besoin
 const SALARY_RANGES: Record<string, [number | null, number | null]> = {
     "< 1M": [0, 999999],
     "1M - 5M": [1000000, 4999999],
     "5M - 10M": [5000000, 9999999],
     "10M - 20M": [10000000, 19999999],
-    "20M+": [20000000, null], // null signifie pas de limite supérieure
-    // "(Non renseigné)": [null, null] // Décommenter si vous voulez une catégorie pour les NULLs
+    "20M+": [20000000, null],
+    // "(Non renseigné)": [null, null] // Pourrait être ajouté si besoin
 };
 
+// Propriétés autorisées pour les stats agrégées
 const ALLOWED_STATS_PROPERTIES = ['age', 'position', 'team', 'college', 'height', 'number', 'weight', 'salary'];
-const ALLOWED_FILTER_PROPERTIES = ['age', 'position', 'team', 'college', 'height', 'number', 'weight', 'salary']; // Peut être identique ou différent
+// Propriétés autorisées pour le filtrage DÉTAILLÉ via l'API /filter
+const ALLOWED_FILTER_PROPERTIES = ['age', 'position', 'team', 'college', 'height', 'number', 'weight', 'salary'];
 
 // --- Route pour les statistiques agrégées (/api/players/stats/...) ---
+// (Cette partie reste inchangée par rapport à votre code original)
 app.get('/api/players/stats/:targetProperty', async (req: Request, res: Response) => {
     const targetProperty = req.params.targetProperty.toLowerCase();
 
-    // Validation de la propriété demandée
     if (!ALLOWED_STATS_PROPERTIES.includes(targetProperty)) {
-        console.warn(`Tentative d'accès stats invalide: ${targetProperty}`);
+        console.warn(`[STATS] Tentative d'accès stats invalide: ${targetProperty}`);
         return res.status(400).json({ error: 'Propriété invalide pour les statistiques' });
     }
 
-    const columnName = targetProperty; // Le nom de la colonne correspond au paramètre validé
+    const columnName = targetProperty;
+    let sql: string;
+    let queryParams: (string | number)[] = [];
 
     try {
-        let sql: string;
-        let queryParams: (string | number)[] = [];
-
-        // --- Logique spécifique pour le SALAIRE ---
         if (columnName === 'salary') {
-            // Construire l'instruction CASE dynamiquement basé sur SALARY_RANGES
             let caseStatement = 'CASE';
-            queryParams = []; // Réinitialiser pour le salaire
+            queryParams = [];
 
+            // Construction dynamique du CASE pour les tranches de salaire
             for (const label in SALARY_RANGES) {
                 const [min, max] = SALARY_RANGES[label];
-                if (min !== null && max !== null) { // Intervalle [min, max]
+                if (min !== null && max !== null) {
                     caseStatement += ` WHEN salary >= ? AND salary <= ? THEN ?`;
                     queryParams.push(min, max, label);
-                } else if (min !== null && max === null) { // Intervalle [min, +∞)
+                } else if (min !== null && max === null) {
                     caseStatement += ` WHEN salary >= ? THEN ?`;
                     queryParams.push(min, label);
-                } else if (min === null && max !== null) { // Intervalle (-∞, max] (peu probable ici)
+                }
+                 // Gérer le cas où min est null et max non null (moins probable ici)
+                 else if (min === null && max !== null) {
                     caseStatement += ` WHEN salary <= ? THEN ?`;
                     queryParams.push(max, label);
-                }
-                // Cas pour les NULLs (si "(Non renseigné)": [null, null] est défini)
-                // else if (min === null && max === null) {
-                //     caseStatement += ` WHEN salary IS NULL THEN ?`;
-                //     queryParams.push(label);
-                // }
+                 }
+                 // Gérer le cas pour les salaires NULL si un label est défini
+                 // else if (min === null && max === null) { // Correspond au label "(Non renseigné)"
+                 //    caseStatement += ` WHEN salary IS NULL THEN ?`;
+                 //    queryParams.push(label);
+                 // }
             }
-            // Gérer les salaires qui ne tombent dans aucune tranche définie (si besoin)
-            // caseStatement += ' ELSE "Autre" END';
-            // Ou exclure les salaires NULL explicitement si pas géré par un label dédié
-             caseStatement += ' ELSE NULL END';
+            // Gérer les salaires hors tranches (si besoin) ou les NULLs non explicitement gérés
+            // caseStatement += ' ELSE "Autre" END'; // Optionnel: catégorie "Autre"
+            caseStatement += ' ELSE NULL END'; // Optionnel: exclure ceux hors tranches définies et les NULLs non gérés
 
             sql = `
               SELECT
                 ${caseStatement} AS label,
                 COUNT(*) AS count
               FROM players
-              WHERE salary IS NOT NULL -- Exclure les salaires non renseignés du comptage principal (sauf si géré par CASE)
+              -- WHERE clause pour exclure les NULLs si pas gérés par un label spécifique
+              WHERE salary IS NOT NULL OR (? IN (SELECT label FROM (SELECT ${caseStatement} as label FROM players) as sub WHERE label IS NOT NULL)) -- Inclure si un label NULL existe
               GROUP BY label
-              HAVING label IS NOT NULL -- Exclure les groupes qui ne correspondent à aucun label (ceux du ELSE NULL)
-              ORDER BY MIN(salary) ASC; -- Trier les tranches par leur valeur minimale
+              HAVING label IS NOT NULL -- Exclure les groupes correspondant à 'ELSE NULL'
+              -- ORDER BY MIN(salary) ASC; -- Tentative de tri par la valeur min de la tranche, peut être complexe
+              -- Il est plus simple de trier côté frontend basé sur l'ordre de SALARY_RANGES
             `;
-            // queryParams a été rempli dans la boucle for
+            // Si un label "(Non renseigné)" existe, on le passe en paramètre pour le WHERE
+            // const nonRenseigneLabel = Object.keys(SALARY_RANGES).find(k => SALARY_RANGES[k][0] === null && SALARY_RANGES[k][1] === null);
+            // queryParams.push(nonRenseigneLabel || null); // Ajoute le label ou null
 
         } else {
-            // --- Logique CORRIGÉE pour les AUTRES PROPRIÉTÉS (Age, Position, Team, etc.) ---
-            // Utilise TRIM() pour nettoyer les données textuelles (ignore espaces avant/après)
+            // Logique pour les autres propriétés (Age, Position, Team, etc.)
             sql = `
               SELECT
-                TRIM(??) AS label, -- Sélectionne la valeur nettoyée
+                TRIM(??) AS label, -- Nettoyer les espaces
                 COUNT(*) AS count
               FROM players
-              WHERE ?? IS NOT NULL      -- Exclut les vrais NULL
-                AND TRIM(??) <> ''    -- Exclut les chaînes vides APRÈS nettoyage (enlève aussi " ", "  ", etc.)
-              GROUP BY label           -- Groupe par la valeur nettoyée (l'alias 'label')
-              ORDER BY label ASC;      -- Trie alphabétiquement par label
+              WHERE ?? IS NOT NULL AND TRIM(??) <> '' -- Exclure NULLs et chaînes vides après trim
+              GROUP BY label
+              ORDER BY label ASC;
             `;
-            // Les paramètres sont les noms de colonnes, répétés pour chaque ??
             queryParams = [columnName, columnName, columnName];
         }
 
-        // Exécuter la requête SQL
-        console.log("SQL Stats:", sql);
-        console.log("Params Stats:", queryParams);
+        console.log("[STATS] SQL:", sql);
+        console.log("[STATS] Params:", queryParams);
         const [results] = await db.query(sql, queryParams);
 
         const labels: (string | number)[] = [];
         const data: number[] = [];
 
-        // Vérifier si results est bien un tableau (attendu de db.query)
         if (Array.isArray(results)) {
-             // Tri spécifique pour le salaire basé sur l'ordre de SALARY_RANGES (si SQL ORDER BY n'est pas suffisant)
-             // Normalement, ORDER BY MIN(salary) devrait bien fonctionner.
-             if (columnName === 'salary' && results.length > 0) {
-                  results.sort((a: any, b: any) => {
-                      const orderA = Object.keys(SALARY_RANGES).indexOf(a.label);
-                      const orderB = Object.keys(SALARY_RANGES).indexOf(b.label);
-                      if (orderA === -1) return 1; // Mettre les labels inconnus à la fin
-                      if (orderB === -1) return -1;
-                      return orderA - orderB; // Trier selon l'ordre défini dans SALARY_RANGES
-                  });
-              }
+            // Tri spécifique pour le salaire basé sur l'ordre défini dans SALARY_RANGES
+            if (columnName === 'salary') {
+                const order = Object.keys(SALARY_RANGES);
+                (results as any[]).sort((a, b) => {
+                    const indexA = order.indexOf(a.label);
+                    const indexB = order.indexOf(b.label);
+                    if (indexA === -1) return 1; // Mettre les inconnus à la fin
+                    if (indexB === -1) return -1;
+                    return indexA - indexB;
+                });
+            }
 
-            // Formater les résultats pour la réponse JSON
             results.forEach((row: any) => {
-                // Vérification supplémentaire, bien que HAVING/WHERE devrait déjà filtrer
                 if (row.label !== null && row.label !== undefined) {
                     labels.push(row.label);
                     data.push(row.count);
                 } else {
-                    console.warn("Stat Row skipped due to null/undefined label:", row);
+                     console.warn("[STATS] Ligne de résultat ignorée (label null/undefined):", row);
                 }
             });
         } else {
-            console.warn("Le résultat de la requête stats n'est pas un tableau:", results);
+             console.warn("[STATS] Résultat de la requête non-conforme (attendu: tableau):", results);
         }
 
-        console.log(`Stats pour ${columnName}: ${labels.length} groupes trouvés.`);
-        res.status(200).json({ labels, data }); // Envoyer les données formatées
+        console.log(`[STATS] Stats pour ${columnName}: ${labels.length} groupes trouvés.`);
+        res.status(200).json({ labels, data });
 
     } catch (error) {
-        console.error(`Erreur lors de la récupération des statistiques pour ${columnName}:`, error);
+        console.error(`[STATS] Erreur pour ${columnName}:`, error);
         res.status(500).json({ error: 'Erreur serveur lors du calcul des statistiques.' });
     }
 });
 
 // --- Route pour récupérer les joueurs filtrés (/api/players/filter?property=...&value=...) ---
+// C'EST CETTE ROUTE QUI EFFECTUE LE FILTRAGE POUR LE MODAL
 app.get('/api/players/filter', async (req: Request, res: Response) => {
     const { property, value } = req.query;
 
-    // Validation simple des paramètres de requête
-    if (typeof property !== 'string' || !property || typeof value !== 'string' || value === undefined || value === null) {
-         console.warn(`Tentative de filtre invalide: property=${property}, value=${value}`);
+    // Validation des paramètres (essentielle)
+    if (typeof property !== 'string' || !property || typeof value !== 'string' /* value peut être vide mais doit être string */) {
+         console.warn(`[FILTER] Tentative de filtre invalide: property=${property}, value=${value}`);
          return res.status(400).json({ error: 'Les paramètres "property" (string non vide) et "value" (string) sont requis.' });
     }
 
     const propertyLower = property.toLowerCase();
 
-    // Validation de la propriété pour le filtre
+    // Validation de la propriété autorisée pour le filtrage
     if (!ALLOWED_FILTER_PROPERTIES.includes(propertyLower)) {
-        console.warn(`Tentative de filtre sur propriété non autorisée: ${propertyLower}`);
+        console.warn(`[FILTER] Tentative de filtre sur propriété non autorisée: ${propertyLower}`);
         return res.status(400).json({ error: `Filtrage par propriété "${property}" non autorisé.` });
     }
 
     const columnName = propertyLower; // Nom de colonne validé
     let sql: string;
-    let queryParams: (string | number | null)[] = []; // Autoriser null pour les bornes de salaire
+    // Utilisation de 'any[]' pour simplifier la gestion des types mixtes (string/number/null)
+    let queryParams: any[] = [];
 
     try {
-        // --- Logique spécifique pour filtrer par tranche de SALAIRE ---
+        // Sélection des colonnes nécessaires pour l'affichage dans le modal
+        const selectColumns = 'id, name, age, position, team, college, height, number, weight, salary';
+
+        // --- Logique de filtrage spécifique pour SALARY (basée sur la tranche/label) ---
         if (columnName === 'salary') {
             const rangeLabel = value; // La valeur est le label de la tranche (ex: "1M - 5M")
             const rangeBounds = SALARY_RANGES[rangeLabel];
 
             if (!rangeBounds) {
-                console.warn(`Intervalle de salaire inconnu demandé pour filtre: "${rangeLabel}"`);
-                return res.status(400).json({ error: `Intervalle de salaire inconnu: "${rangeLabel}"` });
+                console.warn(`[FILTER] Intervalle de salaire inconnu demandé: "${rangeLabel}"`);
+                // Retourner une liste vide si la tranche est inconnue plutôt qu'une erreur 400 ?
+                // return res.status(400).json({ error: `Intervalle de salaire inconnu: "${rangeLabel}"` });
+                return res.status(200).json([]); // Renvoie une liste vide
             }
 
             const [min, max] = rangeBounds;
-            let whereClause = 'WHERE salary IS NOT NULL'; // Commencer par exclure les NULLs
-            queryParams = [];
+            let whereClauses: string[] = [];
+            queryParams = []; // Réinitialiser les paramètres
 
             // Construire la clause WHERE dynamiquement
             if (min !== null) {
-                whereClause += ' AND salary >= ?';
+                whereClauses.push('salary >= ?');
                 queryParams.push(min);
             }
             if (max !== null) {
-                whereClause += ' AND salary <= ?';
+                whereClauses.push('salary <= ?');
                 queryParams.push(max);
             }
-            // Si on avait un label pour les NULLs:
-            // else if (min === null && max === null) {
-            //     whereClause = 'WHERE salary IS NULL';
-            //     queryParams = [];
-            // }
+             // Gérer le cas spécial d'un label pour les NULLs
+             if (min === null && max === null /* && rangeLabel === "(Non renseigné)" */) {
+                 whereClauses = ['salary IS NULL']; // Remplace les autres clauses
+                 queryParams = [];
+             } else if (whereClauses.length > 0) {
+                // S'assurer qu'on ne sélectionne pas les NULL quand on filtre sur une tranche numérique
+                whereClauses.push('salary IS NOT NULL');
+             }
 
-            // Sélectionner toutes les colonnes nécessaires pour le modal frontend
-            sql = `SELECT id, name, age, position, team, college, height, number, weight, salary
-                   FROM players ${whereClause} ORDER BY name ASC`;
+
+            const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+            sql = `SELECT ${selectColumns} FROM players ${whereSql} ORDER BY name ASC`;
 
         } else {
             // --- Logique de filtrage standard pour les AUTRES PROPRIÉTÉS ---
-            // Compare directement la colonne avec la valeur reçue (qui devrait être propre car issue du graphique)
-            // Sélectionner toutes les colonnes nécessaires pour le modal frontend
-            sql = `SELECT id, name, age, position, team, college, height, number, weight, salary
-                   FROM players WHERE ?? = ? ORDER BY name ASC`;
+            // Utilise TRIM() sur la colonne ET la valeur pour une comparaison robuste
+            // (utile si les données ou la valeur cliquée peuvent avoir des espaces)
+            sql = `SELECT ${selectColumns} FROM players WHERE TRIM(??) = TRIM(?) ORDER BY name ASC`;
             queryParams = [columnName, value];
-
-            // Optionnel: Si on suspecte que `value` pourrait contenir des espaces non désirés
-            // et que la colonne `columnName` peut aussi en avoir, utiliser TRIM des deux côtés :
-            // sql = `SELECT * FROM players WHERE TRIM(??) = TRIM(?) ORDER BY name ASC`;
-            // queryParams = [columnName, value];
         }
 
         // Exécuter la requête de filtrage
-        console.log("SQL Filter:", sql);
-        console.log("Params Filter:", queryParams);
+        console.log("[FILTER] SQL:", sql);
+        console.log("[FILTER] Params:", queryParams);
         const [filteredPlayers] = await db.query(sql, queryParams);
 
         // Assurer que la réponse est toujours un tableau
         const playersResult = Array.isArray(filteredPlayers) ? filteredPlayers : [];
 
-        console.log(`Filtrage pour ${columnName} = "${value}", Joueurs trouvés:`, playersResult.length);
-        res.status(200).json(playersResult); // Envoyer le tableau de joueurs
+        console.log(`[FILTER] Filtrage pour ${columnName} = "${value}", Joueurs trouvés: ${playersResult.length}`);
+        res.status(200).json(playersResult); // Envoyer le tableau (potentiellement vide) de joueurs
 
     } catch (error) {
-        console.error(`Erreur lors du filtrage des joueurs pour ${columnName} = "${value}":`, error);
+        console.error(`[FILTER] Erreur pour ${columnName} = "${value}":`, error);
         res.status(500).json({ error: 'Erreur serveur lors du filtrage des joueurs.' });
     }
 });
 
 // --- Démarrage du serveur ---
-const PORT = process.env.PORT || 3001; // Utiliser variable d'env ou 3001 par défaut
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-    console.log(`Serveur Express démarré sur le port ${PORT}`);
-    console.log(`API Stats accessible sur: http://localhost:${PORT}/api/players/stats/{propriete}`);
-    console.log(`API Filtre accessible sur: http://localhost:${PORT}/api/players/filter?property={propriete}&value={valeur}`);
+    console.log(`Serveur Express démarré sur http://localhost:${PORT}`);
+    console.log(`-> API Stats: /api/players/stats/{propriete}`);
+    console.log(`-> API Filtre: /api/players/filter?property={propriete}&value={valeur}`);
 });
