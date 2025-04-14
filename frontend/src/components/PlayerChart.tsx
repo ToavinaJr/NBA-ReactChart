@@ -190,7 +190,7 @@ const PlayerChart: React.FC = () => {
         return (
           player.name?.toLowerCase().includes(term) ||
           player.team?.toLowerCase().includes(term) ||
-          String(player.number).toLowerCase().includes(term) || // Convertir nombre en string pour includes
+          String(player.number).toLowerCase().includes(term) ||
           player.position?.toLowerCase().includes(term) ||
           player.college?.toLowerCase().includes(term)
         );
@@ -202,8 +202,8 @@ const PlayerChart: React.FC = () => {
      switch (target) {
        case 'Position': return 'doughnut';
        case 'Salary': return 'bar';
-       case 'Age': return 'bar'; // Bar pour l'âge est souvent bien
-       case 'Team': return 'bar'; // Bar pour équipe si beaucoup d'équipes, sinon Pie/Doughnut possible
+       case 'Age': return 'bar';
+       case 'Team': return 'bar';
        default: return 'bar';
      }
    };
@@ -329,7 +329,7 @@ const PlayerChart: React.FC = () => {
         
         {/* TeamsDetailsViewer */}
         <TeamsDetailsViewer />
-        
+        <TeamsDetailsViewer />
         {/* FIN TeamsDetailsViewer */}
 
       </div>
