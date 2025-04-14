@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import db from './db'; // Assurez-vous que ce chemin est correct
+import db from './db';
 import cors from 'cors';
 
 const app = express();
@@ -15,16 +15,13 @@ const SALARY_RANGES: Record<string, [number | null, number | null]> = {
     "5M - 10M": [5000000, 9999999],
     "10M - 20M": [10000000, 19999999],
     "20M+": [20000000, null],
-    // "(Non renseigné)": [null, null] // Pourrait être ajouté si besoin
 };
 
-// Propriétés autorisées pour les stats agrégées
+
 const ALLOWED_STATS_PROPERTIES = ['age', 'position', 'team', 'college', 'height', 'number', 'weight', 'salary'];
-// Propriétés autorisées pour le filtrage DÉTAILLÉ via l'API /filter
 const ALLOWED_FILTER_PROPERTIES = ['age', 'position', 'team', 'college', 'height', 'number', 'weight', 'salary'];
 
-// --- Route pour les statistiques agrégées (/api/players/stats/...) ---
-// (Cette partie reste inchangée par rapport à votre code original)
+
 app.get('/api/players/stats/:targetProperty', async (req: Request, res: Response) => {
     const targetProperty = req.params.targetProperty.toLowerCase();
 
@@ -57,14 +54,7 @@ app.get('/api/players/stats/:targetProperty', async (req: Request, res: Response
                     caseStatement += ` WHEN salary <= ? THEN ?`;
                     queryParams.push(max, label);
                  }
-                 // Gérer le cas pour les salaires NULL si un label est défini
-                 // else if (min === null && max === null) { // Correspond au label "(Non renseigné)"
-                 //    caseStatement += ` WHEN salary IS NULL THEN ?`;
-                 //    queryParams.push(label);
-                 // }
             }
-            // Gérer les salaires hors tranches (si besoin) ou les NULLs non explicitement gérés
-            // caseStatement += ' ELSE "Autre" END'; // Optionnel: catégorie "Autre"
             caseStatement += ' ELSE NULL END'; // Optionnel: exclure ceux hors tranches définies et les NULLs non gérés
 
             sql = `
@@ -79,9 +69,6 @@ app.get('/api/players/stats/:targetProperty', async (req: Request, res: Response
               -- ORDER BY MIN(salary) ASC; -- Tentative de tri par la valeur min de la tranche, peut être complexe
               -- Il est plus simple de trier côté frontend basé sur l'ordre de SALARY_RANGES
             `;
-            // Si un label "(Non renseigné)" existe, on le passe en paramètre pour le WHERE
-            // const nonRenseigneLabel = Object.keys(SALARY_RANGES).find(k => SALARY_RANGES[k][0] === null && SALARY_RANGES[k][1] === null);
-            // queryParams.push(nonRenseigneLabel || null); // Ajoute le label ou null
 
         } else {
             // Logique pour les autres propriétés (Age, Position, Team, etc.)
@@ -144,7 +131,7 @@ app.get('/api/players/filter', async (req: Request, res: Response) => {
     const { property, value } = req.query;
 
     // Validation des paramètres (essentielle)
-    if (typeof property !== 'string' || !property || typeof value !== 'string' /* value peut être vide mais doit être string */) {
+    if (typeof property !== 'string' || !property || typeof value !== 'string') {
          console.warn(`[FILTER] Tentative de filtre invalide: property=${property}, value=${value}`);
          return res.status(400).json({ error: 'Les paramètres "property" (string non vide) et "value" (string) sont requis.' });
     }
@@ -168,14 +155,12 @@ app.get('/api/players/filter', async (req: Request, res: Response) => {
 
         // --- Logique de filtrage spécifique pour SALARY (basée sur la tranche/label) ---
         if (columnName === 'salary') {
-            const rangeLabel = value; // La valeur est le label de la tranche (ex: "1M - 5M")
+            const rangeLabel = value;
             const rangeBounds = SALARY_RANGES[rangeLabel];
 
             if (!rangeBounds) {
                 console.warn(`[FILTER] Intervalle de salaire inconnu demandé: "${rangeLabel}"`);
-                // Retourner une liste vide si la tranche est inconnue plutôt qu'une erreur 400 ?
-                // return res.status(400).json({ error: `Intervalle de salaire inconnu: "${rangeLabel}"` });
-                return res.status(200).json([]); // Renvoie une liste vide
+                return res.status(200).json([]);
             }
 
             const [min, max] = rangeBounds;
@@ -205,19 +190,14 @@ app.get('/api/players/filter', async (req: Request, res: Response) => {
             sql = `SELECT ${selectColumns} FROM players ${whereSql} ORDER BY name ASC`;
 
         } else {
-            // --- Logique de filtrage standard pour les AUTRES PROPRIÉTÉS ---
-            // Utilise TRIM() sur la colonne ET la valeur pour une comparaison robuste
-            // (utile si les données ou la valeur cliquée peuvent avoir des espaces)
             sql = `SELECT ${selectColumns} FROM players WHERE TRIM(??) = TRIM(?) ORDER BY name ASC`;
             queryParams = [columnName, value];
         }
 
-        // Exécuter la requête de filtrage
         console.log("[FILTER] SQL:", sql);
         console.log("[FILTER] Params:", queryParams);
         const [filteredPlayers] = await db.query(sql, queryParams);
 
-        // Assurer que la réponse est toujours un tableau
         const playersResult = Array.isArray(filteredPlayers) ? filteredPlayers : [];
 
         console.log(`[FILTER] Filtrage pour ${columnName} = "${value}", Joueurs trouvés: ${playersResult.length}`);
