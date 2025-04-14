@@ -4,11 +4,11 @@ cd frontend
 npm run dev
 ```
 
-# POur lancer le serveur
+# Pour lancer le serveur
 ```bash
 cd server
 node dist/index.js
-```
+```****
 
 # Pour lancer la base de donnée
 ```sql
