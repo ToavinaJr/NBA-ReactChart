@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface ChartFilterSidebarProps {
     targets: string[];
@@ -13,6 +13,21 @@ const ChartFilterSidebar: React.FC<ChartFilterSidebarProps> = ({
     onSelectTarget,
     isLoading,
 }) => {
+    const [teams, setTeams] = useState([]);
+    useEffect(() => {
+    const fetchTeams = async () => {
+        try {
+        const res = await fetch("http://localhost:3001/api/teams/list");
+        const data = await res.json();
+        setTeams(data);
+        } catch (error) {
+        console.error("Error fetching teams:", error);
+        }
+    };
+    fetchTeams();
+    }, []);
+    console.log(teams);
+      
     return (
         <div style={{ width: '220px', backgroundColor: '#f8f9fa', padding: '20px', overflowY: 'auto', borderRight: '1px solid #dee2e6' }}>
             <h3>Filtres Graphique</h3>
@@ -33,6 +48,7 @@ const ChartFilterSidebar: React.FC<ChartFilterSidebarProps> = ({
                     {target}
                 </button>
             ))}
+            
         </div>
     );
 };
