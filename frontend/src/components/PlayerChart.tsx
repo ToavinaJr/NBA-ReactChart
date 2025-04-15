@@ -195,7 +195,7 @@ const PlayerChart: React.FC = () => {
           player.college?.toLowerCase().includes(term)
         );
       })
-    : []; // Retourne un tableau vide si filteredPlayers est null
+    : [];
 
   // --- Choix type/options graphique (adapté) ---
   const getChartType = (target: string): 'bar' | 'doughnut' | 'line' | 'pie' | 'radar' => {
@@ -210,11 +210,11 @@ const PlayerChart: React.FC = () => {
   const chartType = getChartType(selectedTarget);
 
   // Options du graphique (type ChartOptions pour une meilleure auto-complétion)
-  const chartOptions: ChartOptions<typeof chartType> = { // Typage des options
+  const chartOptions: ChartOptions<typeof chartType> = {
     responsive: true,
     maintainAspectRatio: false,
     onClick: handleChartClick, // La fonction qui déclenche le filtre backend
-    scales: (chartType === 'bar' || chartType === 'line') ? { // Seulement pour Bar/Line
+    scales: (chartType === 'bar' || chartType === 'line') ? {
       y: { beginAtZero: true, title: { display: true, text: 'Nombre de Joueurs' } },
       x: { title: { display: true, text: selectedTarget === 'Salary' ? 'Tranche de Salaire' : selectedTarget } }
     } : undefined,
@@ -274,8 +274,6 @@ const PlayerChart: React.FC = () => {
     console.log(`[RENDER] Rendering ${chartType} chart for ${selectedTarget}. Dataset label: "${labelFromState}"`);
     if (typeof labelFromState !== 'string' || labelFromState === '') {
         console.error(`[RENDER] ****** ATTENTION: Invalid label detected just before rendering! Label:`, labelFromState);
-        // Fallback possible :
-        // if (chartData.datasets[0]) chartData.datasets[0].label = `Données pour ${selectedTarget}`;
     }
 
     // Rendu conditionnel basé sur chartType
