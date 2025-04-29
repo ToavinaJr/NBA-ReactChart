@@ -8,7 +8,7 @@ npm run dev
 ```bash
 cd server
 node dist/index.js
-```****
+```
 
 # Pour lancer la base de donnée
 ```sql

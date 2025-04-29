@@ -1,6 +1,6 @@
 import React from 'react';
 import { Player } from '../types';
-import './PlayerModal.css'; // On ajoutera ce fichier CSS
+import './PlayerModal.css';
 
 interface PlayerModalProps {
     positionLabel: string;
@@ -19,11 +19,24 @@ const PlayerModal: React.FC<PlayerModalProps> = ({ positionLabel, players, loadi
                 {loading && <p>Chargement des joueurs...</p>}
                 {error && <p className="error">{error}</p>}
                 {!loading && !error && (
-                    <ul className="player-list">
-                        {players.map(player => (
-                            <li key={player.id || player.name}>{player.name} – {player.team} – {player.salary}</li>
-                        ))}
-                    </ul>
+                    <table className="player-table">
+                        <thead>
+                            <tr>
+                                <th>Nom</th>
+                                <th>Équipe</th>
+                                <th>Salaire</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {players.map(player => (
+                                <tr key={player.id || player.name}>
+                                    <td>{player.name}</td>
+                                    <td>{player.team}</td>
+                                    <td>{player.salary}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 )}
             </div>
         </div>

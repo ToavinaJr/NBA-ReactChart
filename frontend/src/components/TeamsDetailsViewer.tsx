@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'; // Ajout de useCallback
+import React, { useEffect, useState, useCallback } from 'react';
 import { Bar } from 'react-chartjs-2';
 import {
     Chart as ChartJS,
@@ -13,19 +13,18 @@ import {
     ActiveElement,
 } from 'chart.js';
 import './TeamsDetailsViewer.css';
-import { Player } from '../types'; // Assurez-vous que Player a bien un 'id' optionnel ou une clé unique
+import { Player } from '../types';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 interface TeamDetailsData {
-    teamName: string; // Ajouté pour confirmation
-    labels: string[]; // Ce sont les labels de position (PG, SG, etc.)
+    teamName: string;
+    labels: string[];
     playerCounts: number[];
-    averageAges: (number | null)[]; // Peut être null si aucun joueur
-    averageSalaries: (number | null)[]; // Peut être null si aucun joueur
+    averageAges: (number | null)[];
+    averageSalaries: (number | null)[];
 }
 
-// Options de base du graphique (inchangé)
 const baseChartOptions: ChartOptions<'bar'> = {
     responsive: true,
     maintainAspectRatio: false,
@@ -38,7 +37,7 @@ const baseChartOptions: ChartOptions<'bar'> = {
             display: true,
             font: { size: 16 },
         },
-         tooltip: { // Optionnel: améliorer le tooltip
+         tooltip: {
              callbacks: {
                  label: function(context) {
                      let label = context.dataset.label || '';
@@ -46,7 +45,6 @@ const baseChartOptions: ChartOptions<'bar'> = {
                          label += ': ';
                      }
                      if (context.parsed.y !== null) {
-                        // Formatage spécifique pour salaire
                         if (context.dataset.label?.toLowerCase().includes('salaire')) {
                              label += new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD', notation: 'compact' }).format(context.parsed.y);
                         } else {
@@ -60,27 +58,25 @@ const baseChartOptions: ChartOptions<'bar'> = {
     },
     scales: {
         y: { beginAtZero: true },
-        // Optionnel: Ajouter un titre à l'axe X si ce sont des positions
         x: { title: { display: true, text: 'Position' } }
     },
 };
 
 interface ChartConfig {
     label: string;
-    data: (number | null)[]; // Permettre null pour les moyennes
+    data: (number | null)[];
     backgroundColor: string;
     borderColor: string;
     title: string;
 }
 
-// ChartBar (inchangé, il fait déjà le travail)
 interface ChartBarProps {
     labels: string[];
     config: ChartConfig;
     onBarClick?: (label: string) => void;
 }
 
-const ChartBar = React.memo(({ labels, config, onBarClick }: ChartBarProps) => { // Utilisation de React.memo pour optimisation
+const ChartBar = React.memo(({ labels, config, onBarClick }: ChartBarProps) => {
     const handleInternalChartClick = useCallback((event: ChartEvent, elements: ActiveElement[]) => {
         if (elements.length > 0 && onBarClick) {
             const { index } = elements[0];
@@ -90,7 +86,7 @@ const ChartBar = React.memo(({ labels, config, onBarClick }: ChartBarProps) => {
                 onBarClick(clickedLabel);
             }
         }
-    }, [labels, onBarClick]); // Dépendances de useCallback
+    }, [labels, onBarClick]);
 
     return (
         <div className="chart-wrapper">
@@ -104,7 +100,7 @@ const ChartBar = React.memo(({ labels, config, onBarClick }: ChartBarProps) => {
                             backgroundColor: config.backgroundColor,
                             borderColor: config.borderColor,
                             borderWidth: 1,
-                            borderRadius: 5, // Note: borderRadius est une option Chart.js v3+, pas un prop de dataset direct standard
+                            borderRadius: 5,
                         },
                     ],
                 }}
@@ -118,7 +114,6 @@ const ChartBar = React.memo(({ labels, config, onBarClick }: ChartBarProps) => {
                             text: config.title,
                         },
                     },
-                    // Appliquer borderRadius via les options si supporté
                     elements: {
                         bar: {
                             borderRadius: 5,
@@ -129,11 +124,10 @@ const ChartBar = React.memo(({ labels, config, onBarClick }: ChartBarProps) => {
         </div>
     );
 });
-ChartBar.displayName = 'ChartBar'; // Aide au débogage avec React DevTools
 
-// === Composant Principal TeamsDetailsViewer ===
+ChartBar.displayName = 'ChartBar'; 
+
 const TeamsDetailsViewer = () => {
-    // États pour la sélection de l'équipe et les données agrégées (inchangés)
     const [teams, setTeams] = useState<string[]>([]);
     const [teamsLoading, setTeamsLoading] = useState(true);
     const [teamsError, setTeamsError] = useState<string | null>(null);
@@ -142,16 +136,13 @@ const TeamsDetailsViewer = () => {
     const [detailsLoading, setDetailsLoading] = useState(false);
     const [detailsError, setDetailsError] = useState<string | null>(null);
 
-    // === États pour la liste des joueurs filtrés par POSITION cliquée ===
-    const [clickedPositionLabel, setClickedPositionLabel] = useState<string | null>(null); // Le label de la position cliquée (ex: 'PG')
-    const [playersForPosition, setPlayersForPosition] = useState<Player[] | null>(null); // La liste des joueurs pour cette position
-    const [playersLoading, setPlayersLoading] = useState<boolean>(false); // Chargement de cette liste spécifique
-    const [playersError, setPlayersError] = useState<string | null>(null); // Erreur pour cette liste
+    const [clickedPositionLabel, setClickedPositionLabel] = useState<string | null>(null);
+    const [playersForPosition, setPlayersForPosition] = useState<Player[] | null>(null);
+    const [playersLoading, setPlayersLoading] = useState<boolean>(false);
+    const [playersError, setPlayersError] = useState<string | null>(null);
 
-    // Fetch la liste des équipes (inchangé)
     useEffect(() => {
         const fetchTeams = async () => {
-            // ... (code inchangé)
              setTeamsLoading(true);
              setTeamsError(null);
              try {
@@ -170,24 +161,21 @@ const TeamsDetailsViewer = () => {
         fetchTeams();
     }, []);
 
-    // Fetch les détails (agrégés) de l'équipe sélectionnée
     useEffect(() => {
-        // --- Réinitialiser la liste des joueurs si l'équipe change ---
         setClickedPositionLabel(null);
         setPlayersForPosition(null);
         setPlayersError(null);
         setPlayersLoading(false);
-        // --- Fin Réinitialisation ---
 
         if (!selectedTeam) {
-            setChartData(null); // Efface les graphiques si aucune équipe n'est sélectionnée
+            setChartData(null);
             return;
         }
 
         const fetchDetails = async () => {
             setDetailsLoading(true);
             setDetailsError(null);
-            setChartData(null); // Optionnel: effacer les anciennes données pendant le chargement
+            setChartData(null);
             try {
                 const res = await fetch(`http://localhost:3001/api/teams/details/${encodeURIComponent(selectedTeam)}`);
                 if (!res.ok) {
@@ -195,7 +183,6 @@ const TeamsDetailsViewer = () => {
                     throw new Error(errorData.message || `Erreur HTTP ${res.status}`);
                 }
                 const data: TeamDetailsData = await res.json();
-                // Validation plus robuste
                  if (!data || !data.labels || !Array.isArray(data.labels) ||
                      !data.playerCounts || !Array.isArray(data.playerCounts) ||
                      !data.averageAges || !Array.isArray(data.averageAges) ||
@@ -214,18 +201,16 @@ const TeamsDetailsViewer = () => {
         fetchDetails();
     }, [selectedTeam]);
 
-    // === Fonction pour fetch la liste des joueurs pour une POSITION cliquée ===
     const fetchPlayersForPosition = useCallback(async (positionLabel: string) => {
-        if (!selectedTeam) return; // Sécurité
+        if (!selectedTeam) return;
 
         console.log(`[FetchPlayers] Fetching players for team "${selectedTeam}" and position "${positionLabel}"`);
         setPlayersLoading(true);
         setPlayersError(null);
-        setPlayersForPosition(null); // Vider la liste précédente
-        setClickedPositionLabel(positionLabel); // Mémoriser la position cliquée
+        setPlayersForPosition(null);
+        setClickedPositionLabel(positionLabel);
 
         try {
-            // Utilisation de l'endpoint /api/players/filter existant
             const apiUrl = `http://localhost:3001/api/players/filter?property=position&value=${encodeURIComponent(positionLabel)}&team=${encodeURIComponent(selectedTeam)}`;
             console.log(`[FetchPlayers] Calling API: ${apiUrl}`);
 
@@ -233,7 +218,6 @@ const TeamsDetailsViewer = () => {
 
             if (!res.ok) {
                  const errorData = await res.json().catch(() => ({ error: `Erreur HTTP ${res.status}: ${res.statusText}` }));
-                 // Utiliser 'error' si fourni par le backend, sinon message générique
                  throw new Error(errorData.error || `Erreur lors de la récupération des joueurs (${res.status})`);
             }
 
@@ -253,15 +237,13 @@ const TeamsDetailsViewer = () => {
         } finally {
             setPlayersLoading(false);
         }
-    }, [selectedTeam]); // Dépendance: selectedTeam. useCallback évite de recréer la fonction à chaque rendu sauf si selectedTeam change.
+    }, [selectedTeam]);
 
-    // === Gestionnaire de clic passé aux graphiques ===
     const handlePositionClick = useCallback((positionLabel: string) => {
         console.log(`[TeamsDetailsViewer] Position clicked: ${positionLabel}`);
         fetchPlayersForPosition(positionLabel);
-    }, [fetchPlayersForPosition]); // Dépendance: la fonction fetch elle-même (qui dépend de selectedTeam)
+    }, [fetchPlayersForPosition]);
 
-    // Fonction pour effacer la liste des joueurs affichée (inchangée)
     const clearPlayerList = () => {
         setClickedPositionLabel(null);
         setPlayersForPosition(null);
@@ -269,7 +251,6 @@ const TeamsDetailsViewer = () => {
         setPlayersLoading(false);
     };
 
-    // Rendu principal (inchangé jusqu'à la section des graphiques)
     if (teamsLoading) return <div className="team-viewer-container"><p>Chargement de la liste des équipes...</p></div>;
     if (teamsError) return <div className="team-viewer-container error-message"><p>Erreur : {teamsError}</p></div>;
 
@@ -288,9 +269,7 @@ const TeamsDetailsViewer = () => {
                 ))}
             </select>
 
-            {/* Section des graphiques */}
             <div className="chart-section">
-                {/* Indicateur de chargement ou message d'erreur pour les détails de l'équipe */}
                 {selectedTeam && detailsLoading && <p className="loading-message">Chargement des données pour {selectedTeam}...</p>}
                 {selectedTeam && detailsError && (
                     <div className="error-message">
@@ -298,13 +277,12 @@ const TeamsDetailsViewer = () => {
                     </div>
                 )}
 
-                {/* Affichage des graphiques si les données sont chargées */}
                 {selectedTeam && chartData && !detailsLoading && !detailsError && (
                      <>
                         {chartData.labels.length === 0 ? (
                              <p className="info-message">Aucune donnée de joueur trouvée pour {selectedTeam}.</p>
                         ) : (
-                            <div className="charts-grid"> {/* Utiliser une grille pour l'alignement */}
+                            <div className="charts-grid">
                                 <ChartBar
                                     labels={chartData.labels}
                                     config={{
@@ -314,7 +292,7 @@ const TeamsDetailsViewer = () => {
                                         borderColor: 'rgba(54, 162, 235, 1)',
                                         title: 'Joueurs par Position',
                                     }}
-                                    onBarClick={handlePositionClick} // <- Connecter le clic
+                                    onBarClick={handlePositionClick}
                                 />
                                 <ChartBar
                                     labels={chartData.labels}
@@ -325,18 +303,18 @@ const TeamsDetailsViewer = () => {
                                         borderColor: 'rgba(255, 159, 64, 1)',
                                         title: 'Âge moyen par Position',
                                     }}
-                                    onBarClick={handlePositionClick} // <- Connecter le clic
+                                    onBarClick={handlePositionClick}
                                 />
                                 <ChartBar
                                     labels={chartData.labels}
                                     config={{
                                         label: 'Salaire moyen ($)',
                                         data: chartData.averageSalaries,
-                                        backgroundColor: 'rgba(75, 192, 192, 0.7)', // Vert/Cyan
+                                        backgroundColor: 'rgba(75, 192, 192, 0.7)',
                                         borderColor: 'rgba(75, 192, 192, 1)',
                                         title: 'Salaire moyen par Position',
                                     }}
-                                    onBarClick={handlePositionClick} // <- Connecter le clic
+                                    onBarClick={handlePositionClick}
                                 />
                             </div>
                         )}
@@ -345,18 +323,14 @@ const TeamsDetailsViewer = () => {
                 {!selectedTeam && !detailsLoading && <p className="info-message">Veuillez sélectionner une équipe pour voir les détails.</p>}
             </div>
 
-            {/* === Section pour afficher la liste des joueurs par POSITION === */}
-            {/* S'affiche seulement si une position a été cliquée */}
             {selectedTeam && clickedPositionLabel && (
                 <div className="player-list-section">
-                    {/* Titre dynamique */}
                     <h3>Joueurs de {selectedTeam} à la position : "{clickedPositionLabel}"</h3>
 
-                    {/* Affichage conditionnel : chargement, erreur, ou liste */}
                     {playersLoading && <p className="loading-message">Chargement des joueurs...</p>}
 
                     {playersError && (
-                        <div className="error-message error-message-list"> {/* Classes CSS pour style */}
+                        <div className="error-message error-message-list">
                             <p>Erreur : {playersError}</p>
                         </div>
                     )}
@@ -364,47 +338,58 @@ const TeamsDetailsViewer = () => {
                     {!playersLoading && !playersError && playersForPosition && (
                         <>
                             {playersForPosition.length > 0 ? (
-                                <>
-                                    <ul className="player-list">
-                                        {playersForPosition.map((player, index) => (
-                                            // Utiliser player.id si disponible et unique, sinon fallback
-                                            <li key={player.id ?? `${player.name}-${index}`}>
-                                                <span className="player-name">{player.name ?? 'N/A'}</span>
-                                                {/* Afficher d'autres détails pertinents */}
-                                                {player.age !== undefined && <span className="player-detail">Âge: {player.age}</span>}
-                                                {player.height && <span className="player-detail">Taille: {player.height}</span>}
-                                                {player.weight && <span className="player-detail">Poids: {player.weight}kg</span>}
-                                                {player.salary !== undefined && player.salary !== null && ( // Vérifier aussi null
-                                                    <span className="player-detail salary">
-                                                        Salaire: {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 }).format(player.salary)}
-                                                    </span>
-                                                 )}
-                                                {player.college && <span className="player-detail college">Collège: {player.college}</span>}
+                                <div className='table-container'>
+                                    <table className="player-table">
+    <thead>
+        <tr>
+            <th>Nom</th>
+            <th>Âge</th>
+            <th>Taille</th>
+            <th>Poids</th>
+            <th>Salaire</th>
+            <th>Collège</th>
+        </tr>
+    </thead>
+    <tbody>
+        {playersForPosition.map((player, index) => (
+            <tr key={player.id ?? `${player.name}-${index}`}>
+                <td className="player-name">{player.name ?? 'N/A'}</td>
+                <td>{player.age ?? '–'}</td>
+                <td>{player.height ?? '–'}</td>
+                <td>{player.weight ? `${player.weight} kg` : '–'}</td>
+                <td>
+                    {player.salary !== undefined && player.salary !== null
+                        ? new Intl.NumberFormat('fr-FR', {
+                            style: 'currency',
+                            currency: 'USD',
+                            notation: 'compact',
+                            maximumFractionDigits: 1
+                          }).format(player.salary)
+                        : '–'}
+                </td>
+                <td>{player.college ?? '–'}</td>
+            </tr>
+        ))}
+    </tbody>
+</table>
 
-                                            </li>
-                                        ))}
-                                    </ul>
                                     <button onClick={clearPlayerList} className="clear-button">Masquer la liste</button>
-                                </>
+                                </div>
                             ) : (
-                                // Message si aucun joueur n'est trouvé pour cette position spécifique
                                 <p className="no-players-message">Aucun joueur trouvé pour la position "{clickedPositionLabel}" dans l'équipe {selectedTeam}.</p>
                             )}
-                             {/* Afficher le bouton Masquer même si aucun joueur n'est trouvé pour pouvoir fermer la section */}
                              {playersForPosition.length === 0 && (
                                  <button onClick={clearPlayerList} className="clear-button">Masquer</button>
                              )}
                         </>
                     )}
-                     {/* Si pas en chargement, pas d'erreur, mais playersForPosition est null (ne devrait pas arriver sauf état initial) */}
                      {!playersLoading && !playersError && playersForPosition === null && (
                         <p className="info-message">Cliquez sur une barre de position dans les graphiques ci-dessus.</p>
                      )}
                 </div>
             )}
-            {/* === Fin Section Liste Joueurs === */}
 
-        </div> // Fin team-viewer-container
+        </div>
     );
 };
 
