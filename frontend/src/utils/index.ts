@@ -13,3 +13,13 @@ export const generateColors = (numColors: number): string[] => {
     }
     return colors;
 };
+
+export const getChartType = (target: string): 'bar' | 'doughnut' | 'line' | 'pie' | 'radar' => {
+    switch (target) {
+        case 'Position': return 'doughnut';
+        case 'Salary': return 'bar';
+        case 'Age': return 'bar';
+        case 'Team': return 'bar';
+        default: return 'bar';
+    }
+};

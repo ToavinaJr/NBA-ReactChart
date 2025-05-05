@@ -26,3 +26,7 @@ export interface ChartStateData {
     borderWidth: number;
   }[];
 }
+
+export type PlayerSortKey = keyof Pick<Player, 'name' | 'team' | 'number' | 'position' | 'age' | 'height' | 'weight' | 'college' | 'salary'>;
+
+export type SortOrder = 'asc' | 'desc';

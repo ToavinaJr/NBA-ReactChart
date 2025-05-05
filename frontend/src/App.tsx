@@ -1,10 +1,10 @@
 import React from 'react';
-import PlayerChart from './components/PlayerChart';
+import PlayerChartContainer from './components/PlayerChartContainer';
 
 const App: React.FC = () => {
   return (
     <div>
-      <PlayerChart />
+      <PlayerChartContainer />
     </div>
   );
 };

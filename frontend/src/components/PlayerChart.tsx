@@ -1,378 +1,502 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend,
     DoughnutController, ArcElement, LineElement, PointElement, RadarController, RadialLinearScale,
     ChartEvent, ActiveElement, ChartOptions
 } from 'chart.js';
-import { Bar, Doughnut, Line, Pie, Radar } from 'react-chartjs-2';
+import { Bar, Doughnut } from 'react-chartjs-2';
 import { Player, ChartResponseData, ChartStateData } from '../types';
-import { generateColors } from '../utils/index.d.ts';
-import ChartFilterSidebar from './ChartFilterSidebar';
-import TeamsDetailsViewer from './TeamsDetailsViewer.tsx';
+import { generateColors , getChartType } from '../utils/index.ts'
+import ChartFilterSidebar from './ChartFilterSidebar'; 
+import TeamsDetailsViewer from './TeamsDetailsViewer'
+import PlayerTable from './PlayerTable';             
+import { PaginationControls } from './PaginationControls';
+import DataDescription from './DataDescription'
 
+const ITEMS_PER_PAGE = 15;
+const BASE_API = 'http://localhost:3001/api';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, DoughnutController, ArcElement, LineElement, PointElement, RadarController, RadialLinearScale);
 
+
 const PlayerChart: React.FC = () => {
-  const [chartData, setChartData] = useState<ChartStateData | null>(null);
-  const [selectedTarget, setSelectedTarget] = useState<string>('Age');
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filteredPlayers, setFilteredPlayers] = useState<Player[] | null>(null);
-  const [isFiltering, setIsFiltering] = useState<boolean>(false);
-  const [filterError, setFilterError] = useState<string | null>(null);
-  const [currentFilterInfo, setCurrentFilterInfo] = useState<{ property: string, label: string | number } | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const chartRef = useRef<ChartJS<'bar' | 'doughnut' | 'line' | 'pie' | 'radar'>>(null);
+    const [chartData, setChartData] = useState<ChartStateData | null>(null);
+    const [selectedTarget, setSelectedTarget] = useState<string>('Home');
+    const [isLoading, setIsLoading] = useState<boolean>(true);
+    const [error, setError] = useState<string | null>(null);
+    const [filteredPlayers, setFilteredPlayers] = useState<Player[] | null>(null);
+    const [isFiltering, setIsFiltering] = useState<boolean>(false);
+    const [filterError, setFilterError] = useState<string | null>(null);
+    const [currentFilterInfo, setCurrentFilterInfo] = useState<{ property: string, label: string | number } | null>(null);
+    const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+    const [searchTermModal, setSearchTermModal] = useState<string>('');
+    const chartRef = useRef<ChartJS<'bar' | 'doughnut' | 'line' | 'pie' | 'radar'>>(null);
 
-  useEffect(() => {
-    const fetchChartData = async () => {
-      setIsLoading(true);
-      setError(null);
-      setFilteredPlayers(null);
-      setCurrentFilterInfo(null);
-      setFilterError(null);
-      setIsModalOpen(false);
-      setSearchTerm('');
-
-      const targetParam = selectedTarget.toLowerCase();
-      console.log(`[EFFECT] Fetching chart stats for: ${targetParam}`);
-
-      try {
-        const response = await fetch(`http://localhost:3001/api/players/stats/${targetParam}`); // Appel API Stats
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: `HTTP error ${response.status}` }));
-          throw new Error(errorData.error || `HTTP error ${response.status}`);
-        }
-        const data: ChartResponseData = await response.json();
-        console.log(`[EFFECT] Received stats data for ${targetParam}:`, data);
-
-        if (!data || !data.labels || !data.data || !Array.isArray(data.labels) || !Array.isArray(data.data)) {
-          console.warn(`[EFFECT] Invalid stats data format for ${targetParam}`, data);
-          setError(`Format de données invalide reçu pour ${selectedTarget}.`);
-          setChartData(null);
-          setIsLoading(false);
-          return;
-        }
-
-        if (data.labels.length === 0) {
-           console.warn(`[EFFECT] No aggregated data found for ${targetParam}`);
-
-           setChartData({
-             labels: [],
-             datasets: [{
-               label: `Aucune donnée pour ${selectedTarget}`,
-               data: [],
-               backgroundColor: [], borderColor: [], borderWidth: 1,
-             }]
-           });
-           setIsLoading(false);
-           return;
-         }
+    const [allPlayers, setAllPlayers] = useState<Player[]>([]);
+    const [isAllPlayersLoading, setIsAllPlayersLoading] = useState<boolean>(false);
+    const [allPlayersError, setAllPlayersError] = useState<string | null>(null);
+    const [searchTermHome, setSearchTermHome] = useState<string>('');
+    const [currentPage, setCurrentPage] = useState<number>(1);
 
 
-        const numLabels = data.labels.length;
-        const backgroundColors = generateColors(numLabels);
-        const borderColors = backgroundColors.map(color => color.replace('0.6', '1'));
-
-        
-        const chartLabel = `Nombre de Joueurs par ${selectedTarget === 'Salary' ? 'Tranche de Salaire' : selectedTarget}`;
-        console.log(`[EFFECT] Generated chartLabel for ${selectedTarget}: "${chartLabel}"`);
-
-        const newChartData = {
-          labels: data.labels,
-          datasets: [{
-            label: chartLabel,
-            data: data.data,
-            backgroundColor: backgroundColors,
-            borderColor: borderColors,
-            borderWidth: 1,
-          }],
-        };
-
-        console.log(`[EFFECT] Setting chartData state for ${selectedTarget}.`);
-        setChartData(newChartData);
-
-      } catch (err) {
-        console.error(`[EFFECT] Error fetching stats for ${targetParam}:`, err);
-        setError(err instanceof Error ? err.message : 'Erreur inconnue');
+    const fetchChartData = useCallback(async (target: string) => {
+        setIsLoading(true);
+        setError(null);
+        setAllPlayers([]);
         setChartData(null);
-      } finally {
-        setIsLoading(false);
-      }
+
+        console.log(`[EFFECT-CHART] Fetching chart stats for: ${target}`);
+
+        try {
+            if (target === 'Home') {
+                setIsLoading(false);
+                return;
+            }
+
+            const response = await fetch(`${BASE_API}/players/stats/${target.toLowerCase()}`)
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: `HTTP error ${response.status}` }));
+                throw new Error(errorData.error || `HTTP error ${response.status}`);
+            }
+            const data: ChartResponseData = await response.json();
+            console.log(`[EFFECT-CHART] Received stats data for ${target}:`, data);
+
+            if (!data || !data.labels || !data.data || !Array.isArray(data.labels) || !Array.isArray(data.data)) {
+                console.warn(`[EFFECT-CHART] Invalid stats data format for ${target}`, data);
+                setError(`Format de données invalide reçu pour ${selectedTarget}.`);
+                setChartData(null);
+                return;
+            }
+
+            if (data.labels.length === 0) {
+                console.warn(`[EFFECT-CHART] No aggregated data found for ${target}`);
+                setChartData({
+                    labels: [],
+                    datasets: [{
+                        label: `Aucune donnée agrégée pour ${selectedTarget}`,
+                        data: [],
+                        backgroundColor: [], borderColor: [], borderWidth: 1,
+                    }]
+                });
+            
+            } else {
+                const numLabels = data.labels.length;
+                const backgroundColors = generateColors(numLabels);
+                const borderColors = backgroundColors.map(color => color.replace('0.6', '1'));
+                const chartLabel = `Nombre de Joueurs par ${selectedTarget === 'Salary' ? 'Tranche de Salaire' : selectedTarget}`;
+                console.log(`[EFFECT-CHART] Generated chartLabel for ${selectedTarget}: "${chartLabel}"`);
+                setChartData({
+                    labels: data.labels,
+                    datasets: [{
+                        label: chartLabel,
+                        data: data.data,
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
+                        borderWidth: 1,
+                    }],
+                });
+            }
+
+        } catch (err) {
+            console.error(`[EFFECT-CHART] Error fetching stats for ${target}:`, err);
+            setError(err instanceof Error ? err.message : 'Erreur inconnue lors du chargement des stats.');
+            setChartData(null);
+        } finally {
+            setIsLoading(false);
+        }
+     }, [selectedTarget]);
+
+
+    const fetchAllPlayers = useCallback(async () => {
+        setIsAllPlayersLoading(true);
+        setAllPlayersError(null);
+        setAllPlayers([]);
+
+        console.log(`[EFFECT-HOME] Fetching all players...`);
+
+        try {
+            const response = await fetch(`http://localhost:3001/api/players/all`);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: `HTTP error ${response.status}` }));
+                throw new Error(errorData.error || `HTTP error ${response.status}`);
+            }
+            const data: Player[] = await response.json();
+            console.log(`[EFFECT-HOME] Received ${data.length} players.`);
+
+            if (!Array.isArray(data)) {
+                 console.warn(`[EFFECT-HOME] Invalid player data format received`, data);
+                 throw new Error("Format de données invalide reçu pour la liste des joueurs.");
+            }
+            setAllPlayers(data);
+
+        } catch (err) {
+            console.error('[EFFECT-HOME] Error fetching all players:', err);
+            setAllPlayersError(err instanceof Error ? err.message : 'Erreur inconnue lors du chargement de la liste.');
+            setAllPlayers([]);
+        } finally {
+            setIsAllPlayersLoading(false);
+        }
+    }, []);
+
+
+    useEffect(() => {
+        setError(null);
+        setAllPlayersError(null);
+        setCurrentPage(1);
+        setSearchTermHome('');
+        setFilteredPlayers(null);
+        setIsModalOpen(false);
+        setCurrentFilterInfo(null);
+
+
+        if (selectedTarget === 'Home') {
+            setIsLoading(true);
+            setChartData(null);
+            fetchAllPlayers().finally(() => setIsLoading(false));
+        } else {
+            setIsAllPlayersLoading(true);
+            setAllPlayers([]);
+            setIsAllPlayersLoading(false);
+            fetchChartData(selectedTarget);
+        }
+    }, [selectedTarget, fetchAllPlayers, fetchChartData]);
+
+
+    const filteredAndSearchedPlayers = allPlayers.filter(player => {
+        // ... (logique inchangée) ...
+        const term = searchTermHome.trim().toLowerCase();
+        if (!term) return true;
+        return (
+            player.name?.toLowerCase().includes(term) ||
+            player.team?.toLowerCase().includes(term) ||
+            player.position?.toLowerCase().includes(term) ||
+            String(player.age).includes(term) ||
+            String(player.number).toLowerCase().includes(term)
+        );
+    });
+
+    const totalPages = Math.ceil(filteredAndSearchedPlayers.length / ITEMS_PER_PAGE);
+
+    const paginatedPlayers = filteredAndSearchedPlayers.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE
+    );
+
+    const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        setSearchTermHome(event.target.value);
+        setCurrentPage(1);
     };
 
-    fetchChartData();
-  }, [selectedTarget]);
-
-  // --- Fonction de CLIC sur le graphique (Appel API de FILTRE) ---
-  const handleChartClick = async (event: ChartEvent, elements: ActiveElement[]) => {
-    console.log(event)
-    // Vérifications initiales
-    if (elements.length === 0 || !chartData || !chartData.labels || chartData.labels.length === 0) return;
-    const { index } = elements[0];
-    if (index < 0 || index >= chartData.labels.length) {
-        console.warn("[CLICK] Invalid click index:", index);
-        return;
-    }
-
-    const clickedLabel = chartData.labels[index];
-    const filterProperty = selectedTarget;
-
-    const valueToSend = clickedLabel;
-
-    console.log(`[CLICK] Chart segment clicked: Property='${filterProperty}', Value='${valueToSend}'`);
-
-    setIsFiltering(true);
-    setFilterError(null);
-    setFilteredPlayers(null);
-    setSearchTerm('');
-    setCurrentFilterInfo({ property: filterProperty, label: valueToSend });
-    setIsModalOpen(true);
-
-    
-    try {
-
-      const encodedValue = encodeURIComponent(String(valueToSend));
-      const url = `http://localhost:3001/api/players/filter?property=${filterProperty.trim().toLowerCase()}&value=${encodedValue}`;
-
-      console.log(`[CLICK] Calling filter API: ${url}`);
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: `Erreur HTTP ${response.status}` }));
-        throw new Error(errorData.error || `Erreur lors du filtrage (${response.status})`);
-      }
-
-      const players: Player[] = await response.json();
-      console.log('[CLICK] Filtered players received from backend:', players);
-
-      setFilteredPlayers(players);
-
-    } catch (err) {
-      console.error('[CLICK] Error during fetch/filter:', err);
-
-      setFilterError(err instanceof Error ? err.message : 'Erreur inconnue lors du filtrage.');
-      setFilteredPlayers(null);
-    } finally {
-      setIsFiltering(false);
-    }
-  };
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setFilteredPlayers(null);
-    setCurrentFilterInfo(null);
-    setFilterError(null);
-    setIsFiltering(false);
-    setSearchTerm('');
-  };
-
-  const playersToDisplay = filteredPlayers
-    ? filteredPlayers.filter(player => {
-        const term = searchTerm.toLowerCase();
-        return (
-          player.name?.toLowerCase().includes(term) ||
-          player.team?.toLowerCase().includes(term) ||
-          String(player.number).toLowerCase().includes(term) ||
-          player.position?.toLowerCase().includes(term) ||
-          player.college?.toLowerCase().includes(term)
-        );
-      })
-    : [];
-
-  const getChartType = (target: string): 'bar' | 'doughnut' | 'line' | 'pie' | 'radar' => {
-     switch (target) {
-       case 'Position': return 'doughnut';
-       case 'Salary': return 'bar';
-       case 'Age': return 'bar';
-       case 'Team': return 'bar';
-       default: return 'bar';
-     }
-   };
-  const chartType = getChartType(selectedTarget);
-
-  const chartOptions: ChartOptions<typeof chartType> = {
-    responsive: true,
-    maintainAspectRatio: false,
-    onClick: handleChartClick,
-    scales: (chartType === 'bar' || chartType === 'line') ? {
-      y: { beginAtZero: true, title: { display: true, text: 'Nombre de Joueurs' } },
-      x: { title: { display: true, text: selectedTarget === 'Salary' ? 'Tranche de Salaire' : selectedTarget } }
-    } : undefined,
-    plugins: {
-        legend: { display: true, position: 'top' },
-        title: {
-            display: true,
-            text: `Répartition des Joueurs par ${selectedTarget === 'Salary' ? 'Tranche de Salaire' : selectedTarget}`,
-            padding: { top: 10, bottom: 20 },
-            font: { size: 16 }
-        },
-        tooltip: {
-            callbacks: {
-              label: function(context) {
-                  let label = context.dataset?.label || '';
-                  if (label) { label += ': '; }
-                  label += context.formattedValue ?? context.parsed?.y ?? context.parsed ?? '';
-                  return label;
-              }
-            }
+    const handlePageChange = (page: number) => {
+        if (page >= 1 && page <= totalPages) {
+            setCurrentPage(page);
         }
-    }
-  };
+    };
 
-  const renderChart = () => {
-     console.log(`[RENDER] Attempting render. isLoading=${isLoading}, error=${error}, chartData exists=${!!chartData}`);
-    if (isLoading || error) return null;
+    const handleChartClick = async (event: ChartEvent, elements: ActiveElement[]) => {
+        console.log(event);
 
-    if (!chartData || !chartData.datasets || chartData.datasets.length === 0 || !chartData.labels ) {
-       console.log(`[RENDER] No valid chart data to render for ${selectedTarget}.`);
-       return <p style={{textAlign: 'center', marginTop: '50px', fontStyle: 'italic'}}>
-                 {chartData?.datasets?.[0]?.label?.includes("Aucune donnée")
-                    ? `Aucune donnée trouvée pour ${selectedTarget}.`
-                    : `Données non disponibles pour ${selectedTarget}.`
-                 }
-              </p>;
-    }
-    
-     if (chartData.labels.length === 0 && chartData.datasets[0]?.data.length === 0) {
-         console.log(`[RENDER] Rendering message for empty data set: ${chartData.datasets[0]?.label}`);
-         return <p style={{textAlign: 'center', marginTop: '50px', fontStyle: 'italic'}}>
-                   {chartData.datasets[0]?.label ?? `Aucune donnée pour ${selectedTarget}.`}
-                </p>;
-     }
+         if (selectedTarget === 'Home' || elements.length === 0 || !chartData || !chartData.labels || chartData.labels.length === 0) {
+            console.log("[CLICK] Ignored: Not on chart view or no clickable element/data.");
+            return;
+        }
 
-    const labelFromState = chartData.datasets[0]?.label;
-    console.log(`[RENDER] Rendering ${chartType} chart for ${selectedTarget}. Dataset label: "${labelFromState}"`);
-    if (typeof labelFromState !== 'string' || labelFromState === '') {
-        console.error(`[RENDER] ****** ATTENTION: Invalid label detected just before rendering! Label:`, labelFromState);
-    }
+        const elementIndex = elements[0].index;
+        if (elementIndex < 0 || elementIndex >= chartData.labels.length) {
+            console.warn("[CLICK] Invalid click index:", elementIndex);
+            return;
+        }
 
-    switch (chartType) {
-      case 'bar': return <Bar ref={chartRef as React.MutableRefObject<ChartJS<'bar'> | null>} data={chartData} options={chartOptions as ChartOptions<'bar'>} />;
-      case 'doughnut': return <Doughnut ref={chartRef as React.MutableRefObject<ChartJS<'doughnut'> | null>} data={chartData} options={chartOptions as ChartOptions<'doughnut'>} />;
-      case 'line': return <Line ref={chartRef as React.MutableRefObject<ChartJS<'line'> | null>} data={chartData} options={chartOptions as ChartOptions<'line'>} />;
-      case 'pie': return <Pie ref={chartRef as React.MutableRefObject<ChartJS<'pie'> | null>} data={chartData} options={chartOptions as ChartOptions<'pie'>} />;
-      case 'radar': return <Radar ref={chartRef as React.MutableRefObject<ChartJS<'radar'> | null>} data={chartData} options={chartOptions as ChartOptions<'radar'>} />;
-      default:
-        console.warn(`[RENDER] Unknown chart type '${chartType}', falling back to 'bar'.`);
-        return <Bar ref={chartRef as React.MutableRefObject<ChartJS<'bar'> | null>} data={chartData} options={chartOptions as ChartOptions<'bar'>} />;
-    }
-  };
+        const clickedLabel = chartData.labels[elementIndex];
+        const filterProperty = selectedTarget;
+        const valueToSend = clickedLabel;
 
-  
-  
-  return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: 'sans-serif', overflow: 'hidden' }}>
-      <ChartFilterSidebar
-        targets={['Age', 'Position', 'Team', 'College', 'Height', 'Number', 'Weight', 'Salary']}
-        selectedTarget={selectedTarget}
-        onSelectTarget={(target) => { if (!isLoading) setSelectedTarget(target); }}
-        isLoading={isLoading}
-      />
+        console.log(`[CLICK] Chart segment clicked: Property='${filterProperty}', Value='${valueToSend}'`);
 
-      <div style={{ flex: 1, padding: '25px', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
-        <h2 style={{textAlign: 'center', marginTop: 0, marginBottom: '20px', flexShrink: 0}}>Statistiques des Joueurs NBA</h2>
-        <div style={{ flexGrow: 1, position: 'relative', minHeight: '400px', width: '100%' }}> {/* Hauteur min + width */}
-          {isLoading && (
-            <div style={{ display:'flex', justifyContent:'center', alignItems:'center', height:'100%' }}>
-                <p style={{ fontSize: '1.2em', color: '#555' }}>Chargement des données...</p>
+        setIsFiltering(true);
+        setFilterError(null);
+        setFilteredPlayers(null);
+        setSearchTermModal('');
+        setCurrentFilterInfo({ property: filterProperty, label: valueToSend });
+        setIsModalOpen(true);
+
+        try {
+            const encodedValue = encodeURIComponent(String(valueToSend));
+            const url = `${BASE_API}/players/filter?property=${filterProperty.trim().toLowerCase()}&value=${encodedValue}`;
+
+            console.log(`[CLICK] Calling filter API: ${url}`);
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: `Erreur HTTP ${response.status}` }));
+                throw new Error(errorData.error || `Erreur lors du filtrage (${response.status})`);
+            }
+
+            const players: Player[] = await response.json();
+            console.log('[CLICK] Filtered players received:', players);
+            setFilteredPlayers(players);
+
+        } catch (err) {
+            console.error('[CLICK] Error during fetch/filter:', err);
+            setFilterError(err instanceof Error ? err.message : 'Erreur inconnue lors du filtrage.');
+            setFilteredPlayers(null);
+        } finally {
+            setIsFiltering(false);
+        }
+    };
+
+    const closeModal = () => {
+        setIsModalOpen(false);
+        setFilteredPlayers(null);
+        setCurrentFilterInfo(null);
+        setFilterError(null);
+        setIsFiltering(false);
+        setSearchTermModal('');
+    };
+
+     const playersToDisplayInModal = filteredPlayers
+       ? filteredPlayers.filter(player => {
+           // ... (logique inchangée) ...
+           const term = searchTermModal.trim().toLowerCase();
+           return (
+             player.name?.toLowerCase().includes(term) ||
+             player.team?.toLowerCase().includes(term) ||
+             String(player.number).toLowerCase().includes(term) ||
+             player.position?.toLowerCase().includes(term) ||
+             player.college?.toLowerCase().includes(term)
+           );
+         })
+       : [];
+
+     const renderChart = () => {
+        if (selectedTarget === 'Home') return null;
+
+        console.log(`[RENDER-CHART] Attempting render. isLoading=${isLoading}, error=${error}, chartData exists=${!!chartData}`);
+
+        // Simplification : Ne pas rendre si chargement ou erreur
+        if (isLoading || error) return null; // Les messages sont gérés ailleurs
+
+        if (!chartData || !chartData.datasets || chartData.datasets.length === 0 || !chartData.labels) {
+            console.log(`[RENDER-CHART] No valid chart data to render for ${selectedTarget}.`);
+            // Message géré par le bloc plus bas si chartData est vide
+            return <p className="text-center mt-[50px] italic text-gray-600">
+                       Données non disponibles ou invalides pour {selectedTarget}.
+                   </p>;
+        }
+
+        if (chartData.labels.length === 0 && chartData.datasets[0]?.data.length === 0) {
+             console.log(`[RENDER-CHART] Rendering message for empty data set: ${chartData.datasets[0]?.label}`);
+            return <p className="text-center mt-[50px] italic text-gray-600">
+                      {chartData.datasets[0]?.label ?? `Aucune donnée pour ${selectedTarget}.`}
+                   </p>;
+        }
+
+
+        const chartType = getChartType(selectedTarget);
+        const chartOptions: ChartOptions<typeof chartType> = {
+            responsive: true,
+            maintainAspectRatio: false,
+            onClick: handleChartClick,
+            scales: (chartType === 'bar' || chartType === 'line') ? {
+                y: { beginAtZero: true, title: { display: true, text: 'Nombre de Joueurs' } },
+                x: { title: { display: true, text: selectedTarget === 'Salary' ? 'Tranche de Salaire' : selectedTarget } }
+            } : undefined,
+            plugins: {
+                legend: { display: true, position: 'top' },
+                title: {
+                    display: true,
+                    text: `Répartition des Joueurs par ${selectedTarget === 'Salary' ? 'Tranche de Salaire' : selectedTarget}`,
+                    padding: { top: 10, bottom: 20 },
+                    font: { size: 16 }
+                },
+                tooltip: {
+                    callbacks: { label: (context) => `${context.dataset.label || ''}: ${context.formattedValue}` }
+                }
+            }
+        };
+
+
+        console.log(`[RENDER-CHART] Rendering ${chartType} chart for ${selectedTarget}.`);
+        switch (chartType) {
+          case 'bar': return <Bar ref={chartRef as React.MutableRefObject<ChartJS<'bar'> | null>} data={chartData} options={chartOptions as ChartOptions<'bar'>} />;
+          case 'doughnut': return <Doughnut ref={chartRef as React.MutableRefObject<ChartJS<'doughnut'> | null>} data={chartData} options={chartOptions as ChartOptions<'doughnut'>} />;
+          default: return <Bar ref={chartRef as React.MutableRefObject<ChartJS<'bar'> | null>} data={chartData} options={chartOptions as ChartOptions<'bar'>} />;
+        }
+     };
+
+
+    return (
+        <div className="flex h-screen font-sans overflow-hidden bg-gray-100">
+            <ChartFilterSidebar
+                targets={['Home', 'Age', 'Position', 'Team', 'College', 'Height', 'Number', 'Weight', 'Salary']}
+                selectedTarget={selectedTarget}
+                onSelectTarget={(target) => { setSelectedTarget(target); }}
+                isLoading={false}
+            />
+            <div className="flex-1 p-6 flex flex-col overflow-y-auto">
+                <h2 className="text-3xl font-bold text-blue-600 text-center mt-0 mb-5 flex-shrink-0">
+                    {selectedTarget === 'Home' ? 'Liste des Joueurs NBA' : `Statistiques des Joueurs NBA (${selectedTarget})`}
+                </h2>
+                <div className="flex-grow">
+                    {selectedTarget === 'Home' && (
+                        <>
+                            {isAllPlayersLoading && (
+                                <p className="text-center italic text-gray-500 py-10">
+                                    Chargement de la liste des joueurs...
+                                </p>
+                            )}
+                            {allPlayersError && (
+                                <div className="p-5 mb-5 border border-red-400 rounded bg-red-100 text-red-800 text-center">
+                                    <strong>Erreur lors du chargement :</strong><br />{allPlayersError}
+                                </div>
+                            )}
+                            {!isAllPlayersLoading && !allPlayersError && (
+                                <>
+                                    <DataDescription />
+                                    <input
+                                        type="text"
+                                        placeholder="Rechercher par nom, équipe, position, âge, numéro..."
+                                        value={searchTermHome}
+                                        onChange={handleSearchChange}
+                                        className="px-3 py-2.5 mb-4 text-base border border-gray-300 rounded w-full box-border focus:ring-2 focus:ring-blue-300 focus:border-blue-500 outline-none"
+                                    />
+                                    {/* Tableau des joueurs */}
+                                    <PlayerTable 
+                                        players={paginatedPlayers} 
+                                        sortKey={null} 
+                                        sortOrder={'asc'} 
+                                        onSort={(key) => console.log(`Sorting by ${key}`)} 
+                                    />
+
+                                    {/* Contrôles de pagination */}
+                                    <PaginationControls
+                                        currentPage={currentPage}
+                                        totalPages={totalPages}
+                                        onPageChange={handlePageChange}
+                                    />
+                                </>
+                            )}
+                        </>
+                    )}
+
+                    {selectedTarget !== 'Home' && (
+                        <div className="relative w-full min-h-[400px]">
+                            {isLoading && (
+                                <div className="flex justify-center items-center h-full">
+                                    <p className="text-lg text-gray-500">Chargement des données du graphique...</p>
+                                </div>
+                            )}
+
+                            {error && (
+                                <div className="p-5 m-5 border border-red-400 rounded bg-red-100 text-red-800 text-center">
+                                    <strong>Erreur lors du chargement :</strong><br />{error}
+                                </div>
+                            )}
+                        
+                            {!isLoading && !error && (
+                                <div className="h-full w-full min-h-[350px] mb-8"> 
+                                    {renderChart()}
+                                </div>
+                            )}
+
+                        
+                            <TeamsDetailsViewer />
+                            <TeamsDetailsViewer />
+                            
+                        </div>
+                    )}
+                </div>
             </div>
-          )}
-          {error && (
-             <div style={{ padding: '20px', margin: '20px', border: '1px solid #e57373', borderRadius: '4px', backgroundColor: '#ffebee', color: '#c62828', textAlign: 'center' }}>
-               <strong>Erreur lors du chargement :</strong><br/>{error}
-             </div>
-          )}
-          {!isLoading && !error && (
-            <div style={{ height: '100%', width: '100%' }}>
-              {renderChart()}
-            </div>
-          )}
-        </div>
-        
 
-        <TeamsDetailsViewer />
-        <TeamsDetailsViewer />
-
-      </div>
-
-      {isModalOpen && (
-        <>
-          <div onClick={closeModal} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0, 0, 0, 0.7)', zIndex: 999 }} />
-          <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '90%', maxWidth: '800px', maxHeight: '85vh', backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 5px 15px rgba(0,0,0,0.3)', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '15px', flexShrink: 0 }}>
-              {currentFilterInfo && (
-                <h3 style={{ margin: 0 }}>
-                  Joueurs: {currentFilterInfo.property} "{String(currentFilterInfo.label)}"
-                </h3>
-              )}
-              <button onClick={closeModal} style={{ background: 'none', border: 'none', fontSize: '1.8rem', cursor: 'pointer', color: '#888', lineHeight: 1, padding: 0 }} aria-label="Fermer">×</button>
-            </div>
-
-             
-             <input
-               type="text"
-               placeholder="Filtrer par nom, équipe, n°, position..."
-               value={searchTerm}
-               onChange={(e) => setSearchTerm(e.target.value)}
-               style={{ padding: '10px 12px', marginBottom: '15px', fontSize: '1em', border: '1px solid #ccc', borderRadius: '4px', width: '100%', boxSizing: 'border-box', flexShrink: 0 }}
-               disabled={isFiltering || !!filterError}
-             />
-
-            
-            <div style={{ overflowY: 'auto', flexGrow: 1, minHeight: '100px' }}>
-              
-              {isFiltering && <p style={{ textAlign: 'center', padding: '30px 0', fontStyle: 'italic', color: '#555' }}>Chargement des joueurs...</p>}
-              {filterError && <p style={{ color: '#c62828', textAlign: 'center', padding: '20px', border: '1px solid #e57373', borderRadius: '4px', backgroundColor: '#ffebee' }}>Erreur: {filterError}</p>}
-              {!isFiltering && !filterError && (
+            {/* --- Modal Filtre --- */}
+            {isModalOpen && (
                 <>
-                  {filteredPlayers && filteredPlayers.length === 0 && currentFilterInfo && (
-                    <p style={{ textAlign: 'center', padding: '30px 0', color: '#555' }}>
-                      Aucun joueur trouvé pour {currentFilterInfo.property === 'Salary' ? 'cette tranche de salaire' : `la catégorie "${String(currentFilterInfo.label)}"`}.
-                    </p>
-                  )}
+                    {/* Overlay */}
+                    <div
+                        onClick={closeModal}
+                        className="fixed inset-0 bg-black/70 z-[999]" 
+                     />
+                    {/* Contenu Modal */}
+                    <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] max-w-3xl max-h-[85vh] bg-white p-5 rounded-lg shadow-xl z-[1000] flex flex-col">
+                        {/* Header Modal */}
+                        <div className="flex justify-between items-center border-b border-gray-200 pb-2.5 mb-4 flex-shrink-0">
+                            {currentFilterInfo && (
+                                <h3 className="text-lg font-semibold text-gray-800 m-0">
+                                    Joueurs - {currentFilterInfo.property}: "{String(currentFilterInfo.label)}"
+                                </h3>
+                            )}
+                            <button
+                                onClick={closeModal}
+                                className="bg-transparent border-none text-3xl cursor-pointer text-gray-500 hover:text-gray-800 leading-none p-0 focus:outline-none"
+                                aria-label="Fermer"
+                            >
+                                ×
+                            </button>
+                        </div>
 
-                  {filteredPlayers && filteredPlayers.length > 0 && playersToDisplay.length === 0 && (
-                    <p style={{ textAlign: 'center', padding: '30px 0', fontStyle: 'italic', color: '#777' }}>
-                      Aucun joueur ne correspond à votre recherche "{searchTerm}" dans cette sélection.
-                    </p>
-                  )}
+                        {/* Filtre dans la Modal */}
+                        <input
+                            type="text"
+                            placeholder="Filtrer dans cette sélection..."
+                            value={searchTermModal}
+                            onChange={(e) => setSearchTermModal(e.target.value)}
+                            className="px-3 py-2.5 mb-4 text-base border border-gray-300 rounded w-full box-border flex-shrink-0 focus:ring-2 focus:ring-blue-300 focus:border-blue-500 outline-none disabled:bg-gray-100"
+                            disabled={isFiltering || !!filterError}
+                        />
 
-                  {playersToDisplay.length > 0 && (
-                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                      {playersToDisplay.map((player, index) => (
-                        <li key={player.id || `${player.name}-${index}`}
-                            style={{ padding: '12px 8px', borderBottom: '1px solid #f0f0f0', display: 'flex', flexWrap: 'wrap', gap: '10px 15px', fontSize: '0.9em', alignItems: 'center' }}>
-                          <strong style={{ minWidth: '150px', flexBasis: '150px' }}>{player.name ?? 'N/A'}</strong>
-                          <span style={{ color: '#666' }}>{player.team ?? 'N/A'}</span>
-                          <span style={{ backgroundColor: '#eee', padding: '2px 6px', borderRadius: '3px', fontSize: '0.85em' }}>{player.position ?? '?'}</span>
-                          <span style={{ color: '#888' }}>(#{player.number ?? '?'})</span>
-                          <span style={{ marginLeft: 'auto', color: '#333' }}>Age: {player.age ?? '?'}</span>
+                        {/* Corps scrollable de la Modal */}
+                        <div className="overflow-y-auto flex-grow min-h-[100px]">
+                            {/* Chargement/Erreur dans la Modal */}
+                            {isFiltering && <p className="text-center py-8 italic text-gray-500">Chargement des joueurs...</p>}
+                            {filterError && <p className="text-red-800 text-center p-5 border border-red-300 rounded bg-red-100">Erreur: {filterError}</p>}
 
-                          {player.height && <span style={{ color: '#555' }}>Ht: {player.height}</span>}
-                          {player.weight && <span style={{ color: '#555' }}>Wt: {player.weight}kg</span>}
-                          {player.college && <span style={{ fontSize: '0.85em', color: '#777', flexBasis: '100%', textAlign: 'left' }}>Collège: {player.college}</span>}
-                          {player.salary !== null && player.salary !== undefined && (
-                            <span style={{ fontWeight: 'bold', color: '#007acc', flexBasis: '100%', textAlign: 'right' }}>
-                              Salaire: {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 }).format(player.salary)}
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                            {/* Liste des joueurs dans la Modal */}
+                            {!isFiltering && !filterError && (
+                                <>
+                                    {/* Message si aucun joueur pour le filtre initial */}
+                                    {filteredPlayers && filteredPlayers.length === 0 && currentFilterInfo && (
+                                        <p className="text-center py-8 text-gray-500">
+                                            Aucun joueur trouvé pour {currentFilterInfo.property === 'Salary' ? 'cette tranche de salaire' : `la catégorie "${String(currentFilterInfo.label)}"`}.
+                                        </p>
+                                    )}
+                                    {/* Message si aucun joueur après filtre de recherche modal */}
+                                    {filteredPlayers && filteredPlayers.length > 0 && playersToDisplayInModal.length === 0 && (
+                                         <p className="text-center py-8 italic text-gray-700">
+                                             Aucun joueur ne correspond à votre recherche "{searchTermModal}" dans cette sélection.
+                                         </p>
+                                    )}
+                                    {/* Liste des joueurs filtrés */}
+                                    {playersToDisplayInModal.length > 0 && (
+                                         <ul className="list-none p-0 m-0">
+                                             {playersToDisplayInModal.map((player, index) => (
+                                                 <li key={player.id || `${player.name}-${index}`}
+                                                     className="py-3 px-2 border-b border-gray-100 flex flex-wrap gap-x-4 gap-y-1 text-sm items-center last:border-b-0 hover:bg-gray-50"
+                                                 >
+                                                      <strong className="min-w-[150px] basis-[150px] text-gray-800">{player.name ?? 'N/A'}</strong>
+                                                      <span className="text-gray-600">{player.team ?? 'N/A'}</span>
+                                                      <span className="bg-gray-200 px-1.5 py-0.5 rounded text-xs">{player.position ?? '?'}</span>
+                                                      <span className="text-gray-500">(#{player.number ?? '?'})</span>
+                                                      <span className="ml-auto text-gray-700">Age: {player.age ?? '?'}</span>
+                                                      {player.height && <span className="text-gray-600">Ht: {player.height}</span>}
+                                                      {player.weight && <span className="text-gray-600">Wt: {player.weight}kg</span>}
+                                                      {player.college && <span className="text-xs text-gray-500 basis-full text-left">Collège: {player.college}</span>}
+                                                      {player.salary !== null && player.salary !== undefined && (
+                                                        <span className="font-bold text-blue-600 basis-full text-right">
+                                                          Salaire: {new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1 }).format(player.salary)}
+                                                        </span>
+                                                      )}
+                                                 </li>
+                                             ))}
+                                         </ul>
+                                     )}
+                                </>
+                            )}
+                        </div>
+                    </div>
                 </>
-              )}
-            </div>
-            
-          </div>
-        </>
-      )}
-      
-    </div>
-  );
+            )}
+        </div>
+    );
 };
 
 export default PlayerChart;
