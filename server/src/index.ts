@@ -452,82 +452,6 @@ app.get('/api/colleges/list', async (req: Request, res: Response) => {
 });
 
 
-app.get('/api/comparison', async (req: Request, res: Response) => {
-    const { type, entities } = req.query;
-
-    if (type !== 'team' && type !== 'college') {
-        console.warn(`[COMPARISON] Type invalide: ${type}`);
-        return res.status(400).json({ error: 'Le paramètre "type" doit être "team" ou "college".' });
-    }
-    if (typeof entities !== 'string' || !entities) {
-        console.warn(`[COMPARISON] Paramètre "entities" manquant ou invalide.`);
-        return res.status(400).json({ error: 'Le paramètre "entities" (liste séparée par des virgules) est requis.' });
-    }
-
-    const entityNames = entities.split(',').map(name => decodeURIComponent(name).trim()).filter(name => name !== '');
-
-    if (entityNames.length === 0) {
-         console.warn(`[COMPARISON] Aucune entité valide dans la liste.`);
-         return res.status(400).json({ error: 'Aucune entité valide spécifiée.' });
-    }
-
-    const columnName = type === 'team' ? 'team' : 'college';
-    const results: EntityComparisonData[] = [];
-
-    try {
-        const sqlTemplate = `
-            SELECT
-                CASE
-                    WHEN position IS NULL OR TRIM(position) = '' THEN '(Non spécifié)'
-                    ELSE TRIM(position)
-                END AS position,
-                COUNT(*) AS playerCount,
-                AVG(salary) AS averageSalary,
-                AVG(age) AS averageAge
-            FROM
-                players
-            WHERE
-                 TRIM(LOWER(??)) = TRIM(LOWER(?))
-                 AND salary IS NOT NULL
-                 AND age IS NOT NULL
-            GROUP BY
-                position
-            ORDER BY
-                CASE position
-                    WHEN 'PG' THEN 1
-                    WHEN 'SG' THEN 2
-                    WHEN 'SF' THEN 3
-                    WHEN 'PF' THEN 4
-                    WHEN 'C' THEN 5
-                    ELSE 6
-                END,
-                position ASC;
-        `;
-
-        for (const entityName of entityNames) {
-            console.log(`[COMPARISON] Fetching stats for ${type}: "${entityName}"`);
-            const [rows] = await db.query(sqlTemplate, [columnName, entityName]);
-
-            const positionStats: PositionStats[] = Array.isArray(rows) ? (rows as any[]).map(row => ({
-                 position: row.position,
-                 playerCount: row.playerCount,
-                 averageSalary: row.averageSalary !== null ? parseFloat(row.averageSalary) : null,
-                 averageAge: row.averageAge !== null ? parseFloat(row.averageAge) : null,
-            })) : [];
-
-            results.push({ entityName, stats: positionStats });
-        }
-
-        console.log(`[COMPARISON] Fetched stats for ${results.length} entities.`);
-        res.status(200).json(results);
-
-    } catch (error) {
-        console.error(`[COMPARISON] Erreur serveur pour type=${type}, entities="${entities}":`, error);
-        res.status(500).json({ error: 'Erreur serveur lors de la récupération des données de comparaison.' });
-    }
-});
-
-
 app.get('/api/players/all', async (req: Request, res: Response) => {
     try {
         const sql = 'SELECT id, name, age, position, team, college, height, number, weight, salary FROM players ORDER BY name ASC';
@@ -550,6 +474,5 @@ app.listen(PORT, () => {
     console.log(`-> API Filtre: /api/players/filter?property={propriete}&value={valeur}&team={nomEquipe?}`);
     console.log(`-> API Teams List: /api/teams/list`);
     console.log(`-> API Colleges List: /api/colleges/list`);
-    console.log(`-> API Comparison: /api/comparison?type={team|college}&entities={entite1},{entite2}...`);
     console.log(`-> API All Players: /api/players/all`);
 });

@@ -36,7 +36,7 @@ const baseChartOptions: ChartOptions<'bar'> = {
                         if (context.dataset.label?.toLowerCase().includes('salaire')) {
                              label += new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'USD', notation: 'compact' }).format(context.parsed.y);
                         } else {
-                            label += context.parsed.y.toFixed(1);
+                            label += context.parsed.y.toFixed(0);
                         }
                      }
                      return label;
@@ -111,6 +111,29 @@ const TeamsDetailsViewer = () => {
         error: string | null;
     }>({ position: '', players: null, loading: false, error: null })
 
+    // Configuration des Chart Bars
+    const playerCountConfig = {
+        label: 'Nombre de joueurs',
+        data: chartData?.playerCounts ?? [],
+        backgroundColor: 'rgba(54, 162, 235, 0.7)',
+        borderColor: 'rgba(54, 162, 235, 1)',
+        title: `Joueurs par Position (${chartData?.teamName})`,
+    };
+    const playerAgeConfig = {
+        label: 'Âge moyen',
+        data: chartData?.averageAges ?? [],
+        backgroundColor: 'rgba(255, 159, 64, 0.7)',
+        borderColor: 'rgba(255, 159, 64, 1)',
+        title: `Âge Moyen par Position (${chartData?.teamName})`,
+    };
+    const playerSalaryConfig = {
+        label: 'Salaire moyen ($)',
+        data: chartData?.averageSalaries ?? [],
+        backgroundColor: 'rgba(75, 192, 192, 0.7)',
+        borderColor: 'rgba(75, 192, 192, 1)',
+        title: `Salaire Moyen par Position (${chartData?.teamName})`,
+    };
+    
     const { teams, loading: teamsLoading, error: teamsError } = useTeams();
     const isValidTeamDetailsData = (data: any): data is TeamDetailsData => {
         return data &&
@@ -257,35 +280,17 @@ const TeamsDetailsViewer = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 w-full mt-5">
                                 <ChartBar
                                     labels={chartData.labels}
-                                    config={{
-                                        label: 'Nombre de joueurs',
-                                        data: chartData.playerCounts,
-                                        backgroundColor: 'rgba(54, 162, 235, 0.7)',
-                                        borderColor: 'rgba(54, 162, 235, 1)',
-                                        title: `Joueurs par Position (${chartData.teamName})`,
-                                    }}
+                                    config={playerCountConfig}
                                     onBarClick={handlePositionClick}
                                 />
                                 <ChartBar
                                     labels={chartData.labels}
-                                    config={{
-                                        label: 'Âge moyen',
-                                        data: chartData.averageAges,
-                                        backgroundColor: 'rgba(255, 159, 64, 0.7)',
-                                        borderColor: 'rgba(255, 159, 64, 1)',
-                                        title: `Âge Moyen par Position (${chartData.teamName})`,
-                                    }}
+                                    config={playerAgeConfig}
                                     onBarClick={handlePositionClick}
                                 />
                                 <ChartBar
                                     labels={chartData.labels}
-                                    config={{
-                                        label: 'Salaire moyen ($)',
-                                        data: chartData.averageSalaries,
-                                        backgroundColor: 'rgba(75, 192, 192, 0.7)',
-                                        borderColor: 'rgba(75, 192, 192, 1)',
-                                        title: `Salaire Moyen par Position (${chartData.teamName})`,
-                                    }}
+                                    config={playerSalaryConfig}
                                     onBarClick={handlePositionClick}
                                 />
                             </div>

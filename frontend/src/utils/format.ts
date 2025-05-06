@@ -5,6 +5,6 @@ export const formatAvgAge = (age: number | null): string => {
 export const formatAvgSalary = (salary: number | null): string => {
     if (salary === null) return 'N/A';
     return new Intl.NumberFormat('fr-FR', {
-        style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 1
+        style: 'currency', currency: 'USD', notation: 'compact', maximumFractionDigits: 0
     }).format(salary);
 }
